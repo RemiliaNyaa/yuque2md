@@ -1,0 +1,30 @@
+{
+  "name": "yuque2md",
+  "version": "2.0.0",
+  "description": "下载语雀文档为本地 markdown，支持命令行和 Web 界面两种方式",
+  "main": "yuque_download.js",
+  "scripts": {
+    "start": "node yuque_download.js",
+    "start:web": "node server.js"
+  },
+  "keywords": [
+    "yuque",
+    "download",
+    "markdown",
+    "语雀"
+  ],
+  "author": "RemiliaNyaa",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RemiliaNyaa/yuque2md.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.4.0",
+    "express": "^4.18.2",
+    "iconv-lite": "^0.7.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

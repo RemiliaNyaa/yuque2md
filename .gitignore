@@ -1,0 +1,20 @@
+# 依赖
+node_modules/
+
+# 下载输出（含个人数据）
+yuque_output/
+test/test_output/
+
+# IDE / 编辑器
+.codebuddy/
+.vscode/
+.DS_Store
+
+# 临时文件
+临时-设计文档/
+*.log
+*.tmp
+
+# 环境变量
+.env
+.env.local
