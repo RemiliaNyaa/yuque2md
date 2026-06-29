@@ -292,8 +292,7 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
     }
 
     if (!body) {
-      log(`  ✗ "${docNode.title}" 内容为空 (可能是空白文档)`);
-      return { ok: false, reason: 'empty_content' };
+      body = '';
     }
 
     // 下载图片到本地
