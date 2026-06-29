@@ -15,6 +15,9 @@ test/
 *.log
 npm-debug.log*
 
+# 本地流程记录
+GitHub仓库推送流程.md
+
 # 构建产物
 dist/
 
