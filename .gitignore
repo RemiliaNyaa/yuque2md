@@ -1,20 +1,34 @@
 # 依赖
 node_modules/
 
-# 下载输出（含个人数据）
+# 下载输出
 yuque_output/
-test/test_output/
+
+# 测试输出
+test/
+
+# 环境变量（含 token，切勿提交）
+.env
+.env.*
+
+# 日志
+*.log
+npm-debug.log*
+
+# 构建产物
+dist/
+
+# 测试覆盖率
+coverage/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # IDE / 编辑器
-.codebuddy/
 .vscode/
-.DS_Store
-
-# 临时文件
-临时-设计文档/
-*.log
-*.tmp
-
-# 环境变量
-.env
-.env.local
+.idea/
+*.swp
+*.swo
+*~

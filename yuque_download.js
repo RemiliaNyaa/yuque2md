@@ -342,7 +342,7 @@ function getPathToDoc(toc, docUuid) {
     if (!cur.parent_uuid) break;
     cur = lookup.get(cur.parent_uuid);
   }
-  return parts.length > 1 ? parts.slice(1, -1) : [];
+  return parts.length > 1 ? parts.slice(0, -1) : [];
 }
 
 function getAllDocNodes(toc) {
