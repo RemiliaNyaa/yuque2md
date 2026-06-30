@@ -1,73 +1,67 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>yuque2md - 语雀文档下载</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-.header { padding: 16px 20px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.header h1 { font-size: 18px; color: #e94560; white-space: nowrap; }
-.token-input { flex: 1; padding: 10px 14px; border: 1px solid #0f3460; border-radius: 6px; background: #1a1a2e; color: #e0e0e0; font-size: 13px; outline: none; min-width: 0; }
-.token-input:focus { border-color: #e94560; }
-.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .2s; }
-.btn-connect { background: #e94560; color: #fff; }
-.btn-connect:hover { background: #d63851; }
-.btn-connect.loading { opacity: .6; pointer-events: none; }
-.btn-connect.done { background: #2ecc71; pointer-events: none; }
-.main { flex: 1; display: flex; overflow: hidden; }
-.tree-panel { width: 380px; flex-shrink: 0; overflow-y: auto; padding: 10px; border-right: 1px solid #0f3460; background: #16213e; }
-.tree-panel::-webkit-scrollbar { width: 6px; }
-.tree-panel::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
-.log-panel { flex: 1; overflow-y: auto; padding: 12px; font-family: 'Consolas','Courier New',monospace; font-size: 12px; background: #0d1117; white-space: pre-wrap; line-height: 1.6; }
-.log-panel::-webkit-scrollbar { width: 6px; }
-.log-panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  :root { --pico-font-size: 90%; }
+  body { height: 100vh; display: flex; flex-direction: column; margin: 0; }
+  header.container-fluid { padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin:0; max-width:none; background: var(--pico-card-background-color); }
+  header h1 { font-size: 1.2em; white-space: nowrap; margin: 0; }
+  header input { flex: 1; min-width: 0; max-width: 500px; }
+  .main { flex: 1; display: flex; overflow: hidden; }
+  .tree-panel { width: 380px; flex-shrink: 0; overflow-y: auto; padding: 12px; border-right: 1px solid var(--pico-muted-border-color); }
+  .log-panel { flex: 1; overflow-y: auto; padding: 12px; font-family: 'Consolas','Courier New',monospace; font-size: .8em; background: #1e1e1e; color: #d4d4d4; white-space: pre-wrap; line-height: 1.5; }
+  .log-panel::-webkit-scrollbar { width: 6px; }
+  .log-panel::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
 
-.kb-card { padding: 10px 12px; margin-bottom: 6px; background: #1a1a2e; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; }
-.kb-card:hover { border-color: #e94560; }
-.kb-card.active { border-color: #e94560; }
-.kb-card .icon { font-size: 20px; }
-.kb-card .info { flex: 1; min-width: 0; }
-.kb-card .name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-card .meta { font-size: 11px; color: #888; margin-top: 2px; }
-.kb-card .expand { font-size: 18px; color: #888; flex-shrink: 0; transition: transform .15s; }
-.kb-card .expand.open { transform: rotate(90deg); }
+  /* KB cards */
+  .kb-card { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; border: 1px solid var(--pico-muted-border-color); }
+  .kb-card:hover { border-color: var(--pico-primary); }
+  .kb-card .icon { font-size: 1.3em; cursor: pointer; }
+  .kb-card .info { flex: 1; min-width: 0; cursor: pointer; }
+  .kb-card .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kb-card .meta { font-size: .8em; color: var(--pico-muted-color); }
+  .kb-card .expand { font-size: 1.1em; color: var(--pico-muted-color); flex-shrink: 0; cursor: pointer; transition: transform .15s; }
+  .kb-card .expand.open { transform: rotate(90deg); }
 
-.tree-children { padding-left: 20px; display: none; }
-.tree-children.expanded { display: block; }
-.tree-node { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-.tree-node:hover { background: #1a1a2e; }
-.tree-node .toggle { width: 16px; font-size: 10px; color: #888; text-align: center; flex-shrink: 0; user-select: none; }
-.tree-node .toggle.leaf { visibility: hidden; }
-.tree-node .cb { -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #555; border-radius: 3px; flex-shrink: 0; cursor: pointer; background: transparent; position: relative; }
-.tree-node .cb:checked { background: #e94560; border-color: #e94560; }
-.tree-node .cb:checked::after { content: '✓'; position: absolute; top: -1px; left: 2px; color: #fff; font-size: 10px; font-weight: bold; }
-.tree-node .node-icon { flex-shrink: 0; font-size: 14px; }
-.tree-node .node-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-node.folder .node-name { font-weight: 500; }
+  /* Tree */
+  .tree-children { padding-left: 20px; display: none; }
+  .tree-children.expanded { display: block; }
+  .tree-node { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border-radius: 4px; cursor: pointer; font-size: .88em; }
+  .tree-node:hover { background: var(--pico-card-background-color); }
+  .tree-node .toggle { width: 16px; font-size: .65em; color: var(--pico-muted-color); text-align: center; flex-shrink: 0; user-select: none; }
+  .tree-node .toggle.leaf { visibility: hidden; }
+  .tree-node input[type=checkbox] { margin: 0; width: 15px; height: 15px; flex-shrink: 0; }
+  .tree-node .node-icon { flex-shrink: 0; }
+  .tree-node .node-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-node.folder .node-name { font-weight: 500; }
 
-.toolbar { padding: 10px 20px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-.toolbar label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.toolbar label input { cursor: pointer; }
-.toolbar .btn-dl { background: #e94560; color: #fff; min-width: 100px; }
-.toolbar .btn-dl:hover { background: #d63851; }
-.toolbar .btn-dl:disabled { opacity: .4; pointer-events: none; }
-.toolbar .count { font-size: 12px; color: #888; min-width: 60px; }
+  /* Toolbar */
+  .toolbar { padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; border-top: 1px solid var(--pico-muted-border-color); background: var(--pico-card-background-color); }
+  .toolbar label { font-size: .9em; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; }
+  .toolbar label input { margin: 0; }
+  .toolbar .count { font-size: .85em; color: var(--pico-muted-color); min-width: 60px; }
 
-.placeholder { color: #555; padding: 40px 20px; text-align: center; font-size: 14px; }
-.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f3460; border-top-color: #e94560; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.loading-tree { color: #888; padding: 8px 4px; font-size: 12px; }
+  /* Misc */
+  .placeholder { color: var(--pico-muted-color); padding: 40px 20px; text-align: center; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--pico-muted-border-color); border-top-color: var(--pico-primary); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-tree { padding: 4px 0; color: var(--pico-muted-color); font-size: .85em; }
+  #btnConnect.loading { opacity: .6; pointer-events: none; }
+  #btnConnect.done { --pico-primary: #2ecc71; pointer-events: none; }
+  .kb-card input[type=checkbox] { margin: 0; }
+  small.muted { color: var(--pico-muted-color); font-size: .85em; }
 </style>
 </head>
 <body>
-<div class="header">
+<header class="container-fluid">
   <h1>yuque2md</h1>
-  <input class="token-input" id="token" type="password" placeholder="粘贴语雀 _yuque_session token">
-  <button class="btn btn-connect" id="btnConnect" onclick="connect()">连接</button>
-</div>
+  <input id="token" type="password" placeholder="粘贴语雀 _yuque_session token">
+  <button id="btnConnect" onclick="connect()">连接</button>
+</header>
 <div class="main">
   <div class="tree-panel" id="treePanel">
     <div class="placeholder">👆 输入 Token 连接语雀账号</div>
@@ -75,34 +69,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="log-panel" id="logPanel"></div>
 </div>
 <div class="toolbar">
-  <label><input type="checkbox" id="chkRecursive" checked onchange="onRecursiveChange()"> 🔄 递归选择</label>
+  <label><input type="checkbox" id="chkRecursive" checked> 🔄 递归选择</label>
   <label><input type="checkbox" id="chkResources"> 📦 下载静态资源 (-r)</label>
   <span class="count" id="lblCount">已选 0 篇</span>
-  <button class="btn btn-dl" id="btnDownload" onclick="startDownload()" disabled>下载已选文档</button>
+  <button id="btnDownload" onclick="startDownload()" disabled>下载已选文档</button>
 </div>
 
 <script>
 let token = '';
 let kbs = [];
-let kbsData = {}; // bookId → { tree, kb }
+let kbsData = {};
 let activeBookId = null;
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function log(msg) { const p = document.getElementById('logPanel'); p.textContent += msg + '\n'; p.scrollTop = p.scrollHeight; }
 
-// ========== 连接 ==========
 async function connect() {
   token = document.getElementById('token').value.trim();
   if (!token) return alert('请输入 Token');
-
   const btn = document.getElementById('btnConnect');
   btn.textContent = '连接中...'; btn.classList.add('loading');
-
   try {
-    const resp = await fetch('/api/kbs', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
+    const resp = await fetch('/api/kbs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error);
     kbs = data.kbs;
@@ -115,20 +103,17 @@ async function connect() {
   }
 }
 
-// ========== 知识库列表 ==========
 function renderKbList() {
   const panel = document.getElementById('treePanel');
-  let html = '<div style="padding:4px 0 8px;border-bottom:1px solid #0f3460;margin-bottom:6px">' +
-    '<label style="cursor:pointer;font-size:13px"><input type="checkbox" id="chkAllKbs" onchange="toggleAllKbs(this.checked)" style="margin-right:4px"> 全选所有知识库</label></div>';
+  let html = '<div style="padding:0 0 8px;border-bottom:1px solid var(--pico-muted-border-color);margin-bottom:8px"><label style="cursor:pointer"><input type="checkbox" id="chkAllKbs" onchange="toggleAllKbs(this.checked)"> 全选所有知识库</label></div>';
   html += kbs.map(kb => {
     const ns = kb.namespace || '?';
-    return `<div class="kb-card">
-      <input type="checkbox" class="kb-cb" id="kb-cb-${kb.id}" data-kbid="${kb.id}" data-ns="${ns}" data-slug="${kb.slug}" onclick="event.stopPropagation();toggleKbSelect('${kb.id}')" title="全选此知识库">
-      <span class="icon" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')">📚</span>
-      <span class="info" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')"><div class="name">${esc(kb.name)}</div><div class="meta">${kb.items_count || '?'} 篇文档</div></span>
-      <span class="expand" id="exp-${kb.id}" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')">▶</span>
-    </div>
-    <div id="kb-${kb.id}" class="tree-children"></div>`;
+    return '<div class="kb-card">' +
+      '<input type="checkbox" class="kb-cb" id="kb-cb-' + kb.id + '" data-kbid="' + kb.id + '" data-ns="' + ns + '" data-slug="' + kb.slug + '" onclick="event.stopPropagation();toggleKbSelect(\'' + kb.id + '\')" title="全选此知识库">' +
+      '<span class="icon" onclick="toggleKb(this.parentElement,\'' + kb.id + '\',\'' + ns + '\',\'' + kb.slug + '\')">📚</span>' +
+      '<span class="info" onclick="toggleKb(this.parentElement,\'' + kb.id + '\',\'' + ns + '\',\'' + kb.slug + '\')"><div class="name">' + esc(kb.name) + '</div><div class="meta">' + (kb.items_count || '?') + ' 篇文档</div></span>' +
+      '<span class="expand" id="exp-' + kb.id + '" onclick="toggleKb(this.parentElement,\'' + kb.id + '\',\'' + ns + '\',\'' + kb.slug + '\')">▶</span>' +
+      '</div><div id="kb-' + kb.id + '" class="tree-children"></div>';
   }).join('');
   panel.innerHTML = html;
 }
@@ -136,77 +121,44 @@ function renderKbList() {
 async function toggleKbSelect(bookId) {
   const kbCb = document.getElementById('kb-cb-' + bookId);
   if (!kbCb) return;
-
-  // 如果树还没加载，先加载
   if (!kbsData[bookId]) {
     const kb = kbs.find(k => String(k.id) === bookId);
     if (!kb) return;
-    const ns = kb.namespace || '?';
-    const kbUrl = 'https://www.yuque.com/' + ns + '/' + kb.slug;
+    const kbUrl = 'https://www.yuque.com/' + (kb.namespace || '?') + '/' + kb.slug;
     try {
-      const resp = await fetch('/api/toc', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, kbUrl }),
-      });
+      const resp = await fetch('/api/toc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl }) });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.error);
       kbsData[bookId] = { tree: data.tree, kb: data.kb };
     } catch (e) {
       log('❌ 加载知识库失败: ' + e.message);
-      kbCb.checked = false;
-      return;
+      kbCb.checked = false; return;
     }
   }
-
-  // 勾选/取消该KB下所有文档
   const container = document.getElementById('kb-' + bookId);
-  // 如果树还没渲染，先渲染
-  if (container && !container.querySelector('.cb')) {
-    container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
-  }
-
+  if (container && !container.querySelector('.cb')) container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
   const checked = kbCb.checked;
-  if (container) {
-    container.querySelectorAll('.cb').forEach(c => { c.checked = checked; });
-  }
+  if (container) container.querySelectorAll('.cb').forEach(c => { c.checked = checked; });
   updateCount();
 }
 
 function toggleAllKbs(checked) {
-  document.querySelectorAll('.kb-cb').forEach(c => {
-    if (c.checked !== checked) {
-      c.checked = checked;
-      toggleKbSelect(c.dataset.kbid);
-    }
-  });
+  document.querySelectorAll('.kb-cb').forEach(c => { if (c.checked !== checked) { c.checked = checked; toggleKbSelect(c.dataset.kbid); } });
   updateCount();
 }
 
 async function toggleKb(card, bookId, namespace, slug) {
   const container = document.getElementById('kb-' + bookId);
   const expandEl = document.getElementById('exp-' + bookId);
-
-  if (container.classList.contains('expanded')) {
-    container.classList.remove('expanded');
-    expandEl.classList.remove('open');
-    return;
-  }
-
+  if (container.classList.contains('expanded')) { container.classList.remove('expanded'); expandEl.classList.remove('open'); return; }
   document.querySelectorAll('.kb-card').forEach(c => c.classList.remove('active'));
-  card.classList.add('active');
-  activeBookId = bookId;
-
+  card.classList.add('active'); activeBookId = bookId;
   if (!kbsData[bookId]) {
     container.innerHTML = '<div class="loading-tree"><span class="spinner"></span>加载文档树...</div>';
-    container.classList.add('expanded');
-    expandEl.classList.add('open');
-
+    container.classList.add('expanded'); expandEl.classList.add('open');
     try {
       const kbUrl = 'https://www.yuque.com/' + namespace + '/' + slug;
-      const resp = await fetch('/api/toc', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, kbUrl }),
-      });
+      const resp = await fetch('/api/toc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl }) });
       const data = await resp.json();
       if (!data.ok) throw new Error(data.error);
       kbsData[bookId] = { tree: data.tree, kb: data.kb };
@@ -216,60 +168,39 @@ async function toggleKb(card, bookId, namespace, slug) {
       return;
     }
   }
-
   container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
-  container.classList.add('expanded');
-  expandEl.classList.add('open');
+  container.classList.add('expanded'); expandEl.classList.add('open');
 }
 
-// ========== 递归渲染树 ==========
-function renderTree(nodes, bookId) {
-  return nodes.map(n => renderNode(n, bookId)).join('');
-}
+function renderTree(nodes, bookId) { return nodes.map(n => renderNode(n, bookId)).join(''); }
 
 function renderNode(node, bookId) {
   const isDoc = node.type === 'DOC';
   const nodeId = bookId + '-' + node.uuid;
   const hasChildren = node.children && node.children.length > 0;
-
   let html = '<div class="tree-node' + (isDoc ? '' : ' folder') + '" data-uuid="' + node.uuid + '" data-book="' + bookId + '">';
   html += '<span class="toggle' + (hasChildren ? '' : ' leaf') + '" onclick="event.stopPropagation();toggleNode(\'' + nodeId + '\')">' + (hasChildren ? '▶' : '') + '</span>';
   html += '<input type="checkbox" class="cb" id="cb-' + nodeId + '" data-nodeid="' + nodeId + '">';
   html += '<span class="node-icon">' + (isDoc ? '📄' : '📁') + '</span>';
-  html += '<span class="node-name">' + esc(node.title) + (node.isDeduped ? ' <small style="color:#888">(' + node.uuid.slice(-8) + ')</small>' : '') + '</span>';
+  html += '<span class="node-name">' + esc(node.title) + (node.isDeduped ? ' <small class="muted">(' + node.uuid.slice(-8) + ')</small>' : '') + '</span>';
   html += '</div>';
-
-  if (hasChildren) {
-    html += '<div id="ch-' + nodeId + '" class="tree-children">' + renderTree(node.children, bookId) + '</div>';
-  }
-
+  if (hasChildren) html += '<div id="ch-' + nodeId + '" class="tree-children">' + renderTree(node.children, bookId) + '</div>';
   return html;
 }
 
-// ========== 展开/折叠 ==========
 function toggleNode(nodeId) {
   const children = document.getElementById('ch-' + nodeId);
   if (!children) return;
   const toggle = document.querySelector('#cb-' + nodeId).parentElement.querySelector('.toggle');
-
-  if (children.classList.contains('expanded')) {
-    children.classList.remove('expanded');
-    if (toggle) toggle.textContent = '▶';
-  } else {
-    children.classList.add('expanded');
-    if (toggle) toggle.textContent = '▼';
-  }
+  if (children.classList.contains('expanded')) { children.classList.remove('expanded'); if (toggle) toggle.textContent = '▶'; }
+  else { children.classList.add('expanded'); if (toggle) toggle.textContent = '▼'; }
 }
 
-// ========== 复选框 ==========
 function onCheck(nodeId) {
   const cb = document.getElementById('cb-' + nodeId);
   if (!cb) return;
   const recursive = document.getElementById('chkRecursive').checked;
-
-  if (recursive) {
-    setChildrenCheckbox(nodeId, cb.checked);
-  }
+  if (recursive) setChildrenCheckbox(nodeId, cb.checked);
   updateParentCheckbox(nodeId);
   updateCount();
 }
@@ -279,73 +210,39 @@ function setChildrenCheckbox(nodeId, checked) {
   if (!container) return;
   container.querySelectorAll('.cb').forEach(c => {
     c.checked = checked;
-    // 递归
-    const parentEl = c.closest('.tree-node');
-    if (parentEl) {
-      const parts = c.id.split('-');
-      const childNodeId = parts.slice(0, -1).join('-') + '-' + parts[parts.length - 1];
-      setChildrenCheckbox(childNodeId, checked);
-    }
+    const parts = c.id.split('-');
+    setChildrenCheckbox(parts.slice(0, -1).join('-') + '-' + parts[parts.length - 1], checked);
   });
 }
 
 function updateParentCheckbox(nodeId) {
-  // 向上冒泡：如果所有兄弟都勾选了，勾选父节点
-  const parts = nodeId.split('-');
-  const uuid = parts[parts.length - 1];
-  const bookId = parts[0];
-
-  // 找到父容器
   const cb = document.getElementById('cb-' + nodeId);
   const nodeEl = cb ? cb.closest('.tree-node') : null;
   if (!nodeEl) return;
-
-  // 向上找
   let parentContainer = nodeEl.closest('.tree-children');
   if (!parentContainer) return;
-
-  // 父节点 ID
-  const parentDiv = parentContainer.parentElement;
-  const parentNode = parentDiv ? parentDiv.querySelector('.tree-node') : null;
+  const parentNode = parentContainer.parentElement.querySelector('.tree-node');
   if (!parentNode) return;
-
   const parentCb = parentNode.querySelector('.cb');
   if (!parentCb) return;
-
   const siblingCbs = parentContainer.querySelectorAll(':scope > .tree-node > .cb, :scope > div > .tree-node > .cb');
   let allChecked = true;
   siblingCbs.forEach(c => { if (!c.checked) allChecked = false; });
   parentCb.checked = allChecked;
-
-  // 继续向上
-  const parentCbId = parentCb.id.replace('cb-', '');
-  updateParentCheckbox(parentCbId);
+  updateParentCheckbox(parentCb.id.replace('cb-', ''));
 }
 
-function onRecursiveChange() {
-  // 切换时不自动更新已有勾选，只在下次勾选时生效
-}
-
-// ========== 统计 ==========
 function updateCount() {
-  // 统计所有选中文档数（包括KB全选 + 单独勾选）
   let count = 0;
-  // KB 全选：统计每个被全选的知识库
   document.querySelectorAll('.kb-cb:checked').forEach(kbCb => {
-    const bookId = kbCb.dataset.kbid;
-    const data = kbsData[bookId];
-    if (data) {
-      // 递归统计 DOC 数量
-      count += countDocs(data.tree);
-    }
+    const data = kbsData[kbCb.dataset.kbid];
+    if (data) count += countDocs(data.tree);
   });
-  // 单独勾选：统计非全选KB下的勾选（避免重复计数）
   document.querySelectorAll('.tree-node .cb:checked').forEach(cb => {
     const nodeEl = cb.closest('.tree-node');
     if (nodeEl) {
-      const bookId = nodeEl.dataset.book;
-      const kbCb = document.getElementById('kb-cb-' + bookId);
-      if (!kbCb || !kbCb.checked) count++; // KB未全选时才加个体
+      const kbCb = document.getElementById('kb-cb-' + nodeEl.dataset.book);
+      if (!kbCb || !kbCb.checked) count++;
     }
   });
   document.getElementById('lblCount').textContent = '已选 ' + count + ' 篇';
@@ -354,136 +251,75 @@ function updateCount() {
 
 function countDocs(nodes) {
   let n = 0;
-  for (const node of nodes) {
-    if (node.type === 'DOC') n++;
-    if (node.children) n += countDocs(node.children);
-  }
+  for (const node of nodes) { if (node.type === 'DOC') n++; if (node.children) n += countDocs(node.children); }
   return n;
 }
 
-// ========== 下载 ==========
 async function startDownload() {
   const downloadResources = document.getElementById('chkResources').checked;
   const btnDl = document.getElementById('btnDownload');
   let totalDocs = 0;
-
-  // 收集被全选的知识库
   const selectedKbs = [];
   document.querySelectorAll('.kb-cb:checked').forEach(kbCb => {
     const bookId = kbCb.dataset.kbid;
     const data = kbsData[bookId];
-    if (data) {
-      selectedKbs.push({ bookId, data, ns: kbCb.dataset.ns, slug: kbCb.dataset.slug, allUuids: collectAllUuids(data.tree) });
-      totalDocs += selectedKbs[selectedKbs.length - 1].allUuids.length;
-    }
+    if (data) { selectedKbs.push({ bookId, data, ns: kbCb.dataset.ns, slug: kbCb.dataset.slug, allUuids: collectAllUuids(data.tree) }); totalDocs += selectedKbs[selectedKbs.length - 1].allUuids.length; }
   });
-
-  // 收集被单独勾选的文档（非全选KB）
   document.querySelectorAll('.tree-node .cb:checked').forEach(cb => {
     const nodeEl = cb.closest('.tree-node');
     if (!nodeEl) return;
     const bookId = nodeEl.dataset.book;
-    const kbCb = document.getElementById('kb-cb-' + bookId);
-    if (kbCb && kbCb.checked) return; // KB已全选，跳过
-
-    // 找到或创建这个KB的记录
+    if (document.getElementById('kb-cb-' + bookId)?.checked) return;
     let kbEntry = selectedKbs.find(k => k.bookId === bookId);
     if (!kbEntry) {
-      const data = kbsData[bookId];
-      if (!data) return;
-      const kbCbEl = document.getElementById('kb-cb-' + bookId);
-      const ns = kbCbEl ? kbCbEl.dataset.ns : '';
-      const slug = kbCbEl ? kbCbEl.dataset.slug : '';
-      kbEntry = { bookId, data, ns, slug, allUuids: [] };
+      const data = kbsData[bookId]; if (!data) return;
+      kbEntry = { bookId, data, ns: document.getElementById('kb-cb-' + bookId)?.dataset.ns || '', slug: document.getElementById('kb-cb-' + bookId)?.dataset.slug || '', allUuids: [] };
       selectedKbs.push(kbEntry);
     }
-    if (!kbEntry.allUuids.includes(nodeEl.dataset.uuid)) {
-      kbEntry.allUuids.push(nodeEl.dataset.uuid);
-      totalDocs++;
-    }
+    if (!kbEntry.allUuids.includes(nodeEl.dataset.uuid)) { kbEntry.allUuids.push(nodeEl.dataset.uuid); totalDocs++; }
   });
-
   if (selectedKbs.length === 0) { log('⚠ 请先选择要下载的文档或知识库'); return; }
-
   log('\n' + '═'.repeat(50));
   log('开始下载: ' + selectedKbs.length + ' 个知识库, ' + totalDocs + ' 篇');
-
   btnDl.disabled = true; btnDl.textContent = '下载中...';
-
   for (const kbEntry of selectedKbs) {
-    const { bookId, data, ns, slug, allUuids } = kbEntry;
+    const { bookId, ns, slug, allUuids } = kbEntry;
     const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
     const kbName = kbs.find(k => String(k.id) === bookId);
     log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
-
     try {
-      const resp = await fetch('/api/download', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }),
-      });
+      const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }) });
       const result = await resp.json();
       if (!result.ok) throw new Error(result.error);
-
       const evtSource = new EventSource('/api/logs/' + result.taskId);
       await new Promise((resolve) => {
-        evtSource.onmessage = (e) => {
-          if (e.data === '__DONE__') { evtSource.close(); resolve(); return; }
-          log(e.data);
-        };
+        evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
         evtSource.onerror = () => { evtSource.close(); resolve(); };
       });
-    } catch (e) {
-      log('  ❌ ' + e.message);
-    }
+    } catch (e) { log('  ❌ ' + e.message); }
   }
-
   btnDl.disabled = false; btnDl.textContent = '下载已选文档';
   log('全部完成');
 }
 
 function collectAllUuids(nodes) {
   let uuids = [];
-  for (const node of nodes) {
-    if (node.type === 'DOC') uuids.push(node.uuid);
-    if (node.children) uuids = uuids.concat(collectAllUuids(node.children));
-  }
+  for (const node of nodes) { if (node.type === 'DOC') uuids.push(node.uuid); if (node.children) uuids = uuids.concat(collectAllUuids(node.children)); }
   return uuids;
 }
 
-// 事件委托：处理所有动态生成的checkbox
 document.getElementById('treePanel').addEventListener('click', function(e) {
   if (e.target.classList.contains('cb')) {
     const nodeId = e.target.dataset.nodeid;
     if (nodeId) {
-      // 手动触发onCheck中的递归逻辑
-      const recursive = document.getElementById('chkRecursive').checked;
-      if (recursive) {
+      if (document.getElementById('chkRecursive').checked) {
         const container = document.getElementById('ch-' + nodeId);
-        if (container) {
-          container.querySelectorAll('.cb').forEach(c => {
-            c.checked = e.target.checked;
-          });
-        }
+        if (container) container.querySelectorAll('.cb').forEach(c => { c.checked = e.target.checked; });
       }
       updateCount();
     }
   }
 });
-
-// 兼容原onCheck引用
-function onCheck(nodeId) {
-  const recursive = document.getElementById('chkRecursive').checked;
-  const cb = document.getElementById('cb-' + nodeId);
-  if (recursive && cb) {
-    const container = document.getElementById('ch-' + nodeId);
-    if (container) {
-      container.querySelectorAll('.cb').forEach(c => {
-        c.checked = cb.checked;
-      });
-    }
-  }
-  updateCount();
-}
 </script>
 </body>
 </html>
