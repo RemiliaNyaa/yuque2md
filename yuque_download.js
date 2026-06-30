@@ -1,36 +1,3 @@
-/**
- * 语雀文档下载工具
- *
- * 三种模式:
- *   模式1 - 全部知识库: node yuque_download.js --all -t <token>
- *   模式2 - 单知识库:   node yuque_download.js <知识库URL> -t <token>
- *   模式3 - 单文档:     node yuque_download.js <文档URL> -t <token> [--sub]
- *
- * 选项:
- *   -t, --token <token>      语雀 cookie token（必填，也可通过环境变量 YUQUE_TOKEN 传入）
- *   -s, --sub                单文档模式: 同时下载所有子文档
- *   -o, --output <dir>       输出目录（默认: ./yuque_output）
- *   -i, --download-images    下载文档中的图片到本地（默认保持远程链接）
- *   --all                    下载所有知识库
- *   -h, --help               显示帮助
- *
- * 示例:
- *   # 下载全部知识库
- *   node yuque_download.js --all -t "xxx"
- *
- *   # 下载全部知识库并下载图片
- *   node yuque_download.js --all -t "xxx" -i
- *
- *   # 下载整个知识库
- *   node yuque_download.js "https://www.yuque.com/simixue/nz334y" -t "xxx"
- *
- *   # 下载单篇文档
- *   node yuque_download.js "https://www.yuque.com/simixue/nz334y/cyrt5l7d64es9fth" -t "xxx"
- *
- *   # 下载文档及其所有子文档，并将图片保存到本地
- *   node yuque_download.js "https://www.yuque.com/simixue/nz334y/cyrt5l7d64es9fth" -t "xxx" --sub -i
- */
-
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
@@ -570,16 +537,16 @@ function showHelp() {
   node yuque_download.js --all -t "xxx" -i
 
   # 下载整个知识库
-  node yuque_download.js "https://www.yuque.com/simixue/nz334y" -t "xxx"
+  node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx"
 
   # 下载单篇文档
-  node yuque_download.js "https://www.yuque.com/simixue/nz334y/cyrt5l7d64es9fth" -t "xxx"
+  node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "xxx"
 
   # 下载文档及其所有子文档，并将图片保存到本地
-  node yuque_download.js "https://www.yuque.com/simixue/nz334y/cyrt5l7d64es9fth" -t "xxx" --sub -i
+  node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "xxx" --sub -i
 
   # 指定输出目录
-  node yuque_download.js "https://www.yuque.com/simixue/nz334y" -t "xxx" -o "./my_docs"
+  node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx" -o "./my_docs"
 
 获取 token: 打开语雀 → F12 → Application → Cookies → _yuque_session 的值
 `);
