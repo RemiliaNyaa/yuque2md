@@ -71,6 +71,7 @@
 <div class="toolbar">
   <label><input type="checkbox" id="chkRecursive" checked> 🔄 递归选择</label>
   <label><input type="checkbox" id="chkResources"> 📦 下载静态资源 (-r)</label>
+  <button id="btnSelectDir" onclick="selectDir()" class="secondary">📁 输出到: yuque_output</button>
   <span class="count" id="lblCount">已选 0 篇</span>
   <button id="btnDownload" onclick="startDownload()" disabled>下载已选文档</button>
 </div>
@@ -80,6 +81,7 @@ let token = '';
 let kbs = [];
 let kbsData = {};
 let activeBookId = null;
+let selectedDirHandle = null;  // showDirectoryPicker 返回的句柄
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function log(msg) { const p = document.getElementById('logPanel'); p.textContent += msg + '\n'; p.scrollTop = p.scrollHeight; }
@@ -101,6 +103,18 @@ async function connect() {
     btn.textContent = '重试'; btn.classList.remove('loading');
     log('❌ 连接失败: ' + e.message);
   }
+}
+
+async function selectDir() {
+  if (!window.showDirectoryPicker) {
+    alert('当前浏览器不支持文件夹选择，请使用 Chrome 或 Edge');
+    return;
+  }
+  try {
+    selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    document.getElementById('btnSelectDir').textContent = '📁 输出到: ' + selectedDirHandle.name;
+    document.getElementById('btnSelectDir').className = '';
+  } catch (e) { /* 用户取消 */ }
 }
 
 function renderKbList() {
@@ -282,21 +296,56 @@ async function startDownload() {
   log('\n' + '═'.repeat(50));
   log('开始下载: ' + selectedKbs.length + ' 个知识库, ' + totalDocs + ' 篇');
   btnDl.disabled = true; btnDl.textContent = '下载中...';
-  for (const kbEntry of selectedKbs) {
-    const { bookId, ns, slug, allUuids } = kbEntry;
-    const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
-    const kbName = kbs.find(k => String(k.id) === bookId);
-    log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
-    try {
-      const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }) });
-      const result = await resp.json();
-      if (!result.ok) throw new Error(result.error);
-      const evtSource = new EventSource('/api/logs/' + result.taskId);
-      await new Promise((resolve) => {
-        evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
-        evtSource.onerror = () => { evtSource.close(); resolve(); };
-      });
-    } catch (e) { log('  ❌ ' + e.message); }
+
+  if (selectedDirHandle) {
+    // 浏览器直写模式：fetch文档内容 → 写入用户选择的文件夹
+    for (const kbEntry of selectedKbs) {
+      const { ns, slug, allUuids } = kbEntry;
+      const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
+      const kbName = kbs.find(k => String(k.id) === kbEntry.bookId);
+      log('  📚 ' + (kbName ? kbName.name : kbEntry.bookId) + ': ' + allUuids.length + ' 篇');
+      try {
+        const resp = await fetch('/api/fetch-docs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids }) });
+        const result = await resp.json();
+        if (!result.ok) throw new Error(result.error);
+
+        for (const doc of result.docs) {
+          try {
+            const relPath = (doc.dirPath ? doc.dirPath + '/' : '') + doc.docName + '.md';
+            const parts = relPath.split('/');
+            let curDir = selectedDirHandle;
+            for (let i = 0; i < parts.length - 1; i++) {
+              curDir = await curDir.getDirectoryHandle(parts[i], { create: true });
+            }
+            const fileHandle = await curDir.getFileHandle(parts[parts.length - 1], { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(doc.content);
+            await writable.close();
+            log('    ✓ ' + relPath + ' (' + doc.size + ' 字符)');
+          } catch (e) {
+            log('    ✗ ' + doc.docName + ': ' + e.message);
+          }
+        }
+      } catch (e) { log('  ❌ ' + e.message); }
+    }
+  } else {
+    // 服务器直写模式（默认 yuque_output）
+    for (const kbEntry of selectedKbs) {
+      const { bookId, ns, slug, allUuids } = kbEntry;
+      const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
+      const kbName = kbs.find(k => String(k.id) === bookId);
+      log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
+      try {
+        const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }) });
+        const result = await resp.json();
+        if (!result.ok) throw new Error(result.error);
+        const evtSource = new EventSource('/api/logs/' + result.taskId);
+        await new Promise((resolve) => {
+          evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
+          evtSource.onerror = () => { evtSource.close(); resolve(); };
+        });
+      } catch (e) { log('  ❌ ' + e.message); }
+    }
   }
   btnDl.disabled = false; btnDl.textContent = '下载已选文档';
   log('全部完成');

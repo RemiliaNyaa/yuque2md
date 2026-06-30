@@ -172,6 +172,62 @@ app.get('/api/logs/:taskId', (req, res) => {
   });
 });
 
+// ========== API: 获取文档内容（供浏览器侧写入） ==========
+app.post('/api/fetch-docs', async (req, res) => {
+  try {
+    const { token, kbUrl, uuids } = req.body;
+    if (!token || !kbUrl || !uuids?.length) return res.status(400).json({ ok: false, error: '缺少参数' });
+
+    const kbInfo = await fetchKbInfo(kbUrl, token);
+    const nameMap = buildDedupMap(kbInfo.toc);
+    const allDocs = getAllDocNodes(kbInfo.toc);
+    const uuidSet = new Set(uuids);
+    const selected = allDocs.filter(d => uuidSet.has(d.uuid));
+
+    const results = [];
+    for (const doc of selected) {
+      try {
+        const articleUrl = doc.url;
+        if (!articleUrl) continue;
+
+        const apiUrl = `${kbInfo.host}/api/docs/${articleUrl}?book_id=${String(kbInfo.bookId)}&mode=markdown&merge_dynamic_data=false`;
+        const headers = buildHeaders(token);
+        const resp = await axios.get(apiUrl, { headers, timeout: 30000 });
+        const docData = resp.data;
+
+        let body = '';
+        if (docData?.data?.sourcecode) body = docData.data.sourcecode;
+        else if (docData?.data?.body) body = docData.data.body;
+        else {
+          try {
+            const altUrl = `${kbInfo.host}/api/docs/${articleUrl}?book_id=${String(kbInfo.bookId)}`;
+            const altResp = await axios.get(altUrl, { headers, timeout: 30000 });
+            if (altResp.data?.data?.content) body = altResp.data.data.content;
+          } catch (e) {}
+        }
+
+        const docName = nameMap.get(doc.uuid) || safeName(doc.title);
+        const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
+        const content = '# ' + doc.title + '\n\n' + (body || '');
+        results.push({
+          uuid: doc.uuid,
+          title: doc.title,
+          docName: docName,
+          dirPath: docPath.join('/'),
+          content: content,
+          size: content.length,
+        });
+      } catch (e) {
+        results.push({ uuid: doc.uuid, title: doc.title, error: e.message });
+      }
+    }
+
+    res.json({ ok: true, kbName: kbInfo.bookName, total: results.length, docs: results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ========== API: 原生文件夹选择对话框 ==========
 app.post('/api/select-folder', (req, res) => {
   const cp = require('child_process');
