@@ -181,7 +181,7 @@ function renderNode(node, bookId) {
 
   let html = '<div class="tree-node' + (isDoc ? '' : ' folder') + '" data-uuid="' + node.uuid + '" data-book="' + bookId + '">';
   html += '<span class="toggle' + (hasChildren ? '' : ' leaf') + '" onclick="event.stopPropagation();toggleNode(\'' + nodeId + '\')">' + (hasChildren ? '▶' : '') + '</span>';
-  html += '<input type="checkbox" class="cb" id="cb-' + nodeId + '" onchange="event.stopPropagation();onCheck(\'' + nodeId + '\')">';
+  html += '<input type="checkbox" class="cb" id="cb-' + nodeId + '" data-nodeid="' + nodeId + '">';
   html += '<span class="node-icon">' + (isDoc ? '📄' : '📁') + '</span>';
   html += '<span class="node-name">' + esc(node.title) + (node.isDeduped ? ' <small style="color:#888">(' + node.uuid.slice(-8) + ')</small>' : '') + '</span>';
   html += '</div>';
@@ -332,6 +332,41 @@ async function startDownload() {
     log('❌ ' + e.message);
     btnDl.disabled = false; btnDl.textContent = '下载已选文档';
   }
+}
+
+// 事件委托：处理所有动态生成的checkbox
+document.getElementById('treePanel').addEventListener('click', function(e) {
+  if (e.target.classList.contains('cb')) {
+    const nodeId = e.target.dataset.nodeid;
+    if (nodeId) {
+      // 手动触发onCheck中的递归逻辑
+      const recursive = document.getElementById('chkRecursive').checked;
+      if (recursive) {
+        const container = document.getElementById('ch-' + nodeId);
+        if (container) {
+          container.querySelectorAll('.cb').forEach(c => {
+            c.checked = e.target.checked;
+          });
+        }
+      }
+      updateCount();
+    }
+  }
+});
+
+// 兼容原onCheck引用
+function onCheck(nodeId) {
+  const recursive = document.getElementById('chkRecursive').checked;
+  const cb = document.getElementById('cb-' + nodeId);
+  if (recursive && cb) {
+    const container = document.getElementById('ch-' + nodeId);
+    if (container) {
+      container.querySelectorAll('.cb').forEach(c => {
+        c.checked = cb.checked;
+      });
+    }
+  }
+  updateCount();
 }
 </script>
 </body>
