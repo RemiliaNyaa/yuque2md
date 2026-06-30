@@ -89,7 +89,7 @@ app.post('/api/toc', async (req, res) => {
 // ========== API: 下载选定文档 ==========
 app.post('/api/download', async (req, res) => {
   try {
-    const { token, kbUrl, uuids, downloadResources } = req.body;
+    const { token, kbUrl, uuids, downloadResources, outputDir: customDir } = req.body;
     if (!token || !kbUrl || !uuids || !uuids.length) {
       return res.status(400).json({ ok: false, error: '缺少参数' });
     }
@@ -106,7 +106,10 @@ app.post('/api/download', async (req, res) => {
       try {
         const kbInfo = await fetchKbInfo(kbUrl, token);
         const nameMap = buildDedupMap(kbInfo.toc);
-        const outputDir = path.join(__dirname, 'yuque_output', safeName(kbInfo.bookName));
+        const kbDir = customDir
+          ? path.join(customDir, safeName(kbInfo.bookName))
+          : path.join(__dirname, 'yuque_output', safeName(kbInfo.bookName));
+        const outputDir = kbDir;
 
         // 清理旧输出
         if (fs.existsSync(outputDir)) {

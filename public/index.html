@@ -81,7 +81,7 @@ let token = '';
 let kbs = [];
 let kbsData = {};
 let activeBookId = null;
-let selectedDirHandle = null;  // showDirectoryPicker 返回的句柄
+let selectedOutputDir = '';  // 用户自定义输出目录（空=默认 yuque_output）
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function log(msg) { const p = document.getElementById('logPanel'); p.textContent += msg + '\n'; p.scrollTop = p.scrollHeight; }
@@ -106,15 +106,40 @@ async function connect() {
 }
 
 async function selectDir() {
-  if (!window.showDirectoryPicker) {
-    alert('当前浏览器不支持文件夹选择，请使用 Chrome 或 Edge');
-    return;
-  }
+  const btn = document.getElementById('btnSelectDir');
+  btn.textContent = '选择中...'; btn.disabled = true;
   try {
-    selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    document.getElementById('btnSelectDir').textContent = '📁 输出到: ' + selectedDirHandle.name;
-    document.getElementById('btnSelectDir').className = '';
-  } catch (e) { /* 用户取消 */ }
+    const resp = await fetch('/api/select-folder', { method: 'POST' });
+    const data = await resp.json();
+    if (data.ok) {
+      selectedOutputDir = data.path;
+      btn.textContent = '📁 输出到: ' + data.path;
+      btn.disabled = false;
+      log('📁 输出目录: ' + data.path);
+    } else {
+      selectedOutputDir = '';
+      btn.textContent = '📁 输出到: yuque_output';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    // 后端不可用，回退到 showDirectoryPicker
+    if (window.showDirectoryPicker) {
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        selectedOutputDir = '__browser__:' + handle.name;
+        btn.textContent = '📁 输出到: ' + handle.name;
+        btn.disabled = false;
+        // 存 handle 供后续浏览器写
+        window._dirHandle = handle;
+      } catch (ex) {
+        btn.textContent = '📁 输出到: yuque_output';
+        btn.disabled = false;
+      }
+    } else {
+      btn.textContent = '📁 输出到: yuque_output';
+      btn.disabled = false;
+    }
+  }
 }
 
 function renderKbList() {
@@ -297,61 +322,24 @@ async function startDownload() {
   log('开始下载: ' + selectedKbs.length + ' 个知识库, ' + totalDocs + ' 篇');
   btnDl.disabled = true; btnDl.textContent = '下载中...';
 
-  if (selectedDirHandle) {
-    // 浏览器直写模式：fetch文档内容 → 写入用户选择的文件夹
-    for (const kbEntry of selectedKbs) {
-      const { ns, slug, allUuids } = kbEntry;
-      const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
-      const kbName = kbs.find(k => String(k.id) === kbEntry.bookId);
-      log('  📚 ' + (kbName ? kbName.name : kbEntry.bookId) + ': ' + allUuids.length + ' 篇');
-      try {
-        const resp = await fetch('/api/fetch-docs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids }) });
-        const result = await resp.json();
-        if (!result.ok) throw new Error(result.error);
-
-        let idx = 0;
-        for (const doc of result.docs) {
-          idx++;
-          try {
-            const relPath = (doc.dirPath ? doc.dirPath + '/' : '') + doc.docName + '.md';
-            const parts = relPath.split('/');
-            let curDir = selectedDirHandle;
-            for (let i = 0; i < parts.length - 1; i++) {
-              curDir = await curDir.getDirectoryHandle(parts[i], { create: true });
-            }
-            const fileHandle = await curDir.getFileHandle(parts[parts.length - 1], { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(new Blob([doc.content], { type: 'text/plain' }));
-            await writable.close();
-            log('[' + idx + '/' + result.docs.length + '] ' + doc.title);
-            var ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            log('[' + ts + ']   ✓ 已保存 "' + doc.docName + '" (' + doc.size + ' 字符)');
-          } catch (e) {
-            log('[' + idx + '/' + result.docs.length + '] ' + doc.title);
-            log('  ✗ "' + (doc.docName || doc.title || '?') + '" 失败: ' + e.message);
-          }
-        }
-        log('\n文件保存在: ' + selectedDirHandle.name + ' 文件夹');
-      } catch (e) { log('  ❌ ' + e.message); }
-    }
-  } else {
-    // 服务器直写模式（默认 yuque_output）
-    for (const kbEntry of selectedKbs) {
-      const { bookId, ns, slug, allUuids } = kbEntry;
-      const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
-      const kbName = kbs.find(k => String(k.id) === bookId);
-      log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
-      try {
-        const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }) });
-        const result = await resp.json();
-        if (!result.ok) throw new Error(result.error);
-        const evtSource = new EventSource('/api/logs/' + result.taskId);
-        await new Promise((resolve) => {
-          evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
-          evtSource.onerror = () => { evtSource.close(); resolve(); };
-        });
-      } catch (e) { log('  ❌ ' + e.message); }
-    }
+  for (const kbEntry of selectedKbs) {
+    const { bookId, ns, slug, allUuids } = kbEntry;
+    const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
+    const kbName = kbs.find(k => String(k.id) === bookId);
+    log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
+    try {
+      const body = selectedOutputDir
+        ? { token, kbUrl, uuids: allUuids, downloadResources, outputDir: selectedOutputDir }
+        : { token, kbUrl, uuids: allUuids, downloadResources };
+      const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const result = await resp.json();
+      if (!result.ok) throw new Error(result.error);
+      const evtSource = new EventSource('/api/logs/' + result.taskId);
+      await new Promise((resolve) => {
+        evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
+        evtSource.onerror = () => { evtSource.close(); resolve(); };
+      });
+    } catch (e) { log('  ❌ ' + e.message); }
   }
   btnDl.disabled = false; btnDl.textContent = '下载已选文档';
   log('全部完成');
