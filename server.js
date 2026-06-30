@@ -294,31 +294,26 @@ app.post('/api/test-select-folder-3', async (req, res) => {
 });
 
 app.post('/api/test-select-folder-4', async (req, res) => {
-  // 方案4: 用 shell.application COM 对象
+  // 方案4: Shell COM + windowsHide + UTF8
   const r = await runSelectFolder(`
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
     $shell = New-Object -ComObject Shell.Application
     $folder = $shell.BrowseForFolder(0, 'test-4: Shell BrowseForFolder', 0, 0)
-    if ($folder) {
-      Write-Output $folder.Self.Path
-    }
-  `);
-  res.json({ scheme: 'Shell BrowseForFolder', ...r });
+    if ($folder) { Write-Output $folder.Self.Path }
+  `, { windowsHide: true });
+  res.json({ scheme: 'Shell BrowseForFolder + windowsHide', ...r });
 });
 
 // ========== API: 原生文件夹选择对话框 ==========
 app.post('/api/select-folder', (req, res) => {
   const cp = require('child_process');
-  // 调用 PowerShell 弹出原生文件夹对话框（无 cmd 窗口）
   const psScript = `
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = '选择下载目录'
-    $dialog.ShowNewFolderButton = $true
-    if ($dialog.ShowDialog() -eq 'OK') {
-      Write-Output $dialog.SelectedPath
-    }
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $shell = New-Object -ComObject Shell.Application
+    $folder = $shell.BrowseForFolder(0, '选择下载目录', 0, 0)
+    if ($folder) { Write-Output $folder.Self.Path }
   `;
-  const child = cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+  const child = cp.execFile('powershell', ['-NoProfile', '-Command', psScript], {
     windowsHide: true,
     timeout: 120000,
   });
