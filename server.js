@@ -20,6 +20,8 @@ const PORT = 3456;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+// 测试页面
+app.use('/test/folder', express.static(path.join(__dirname, '..', '临时文件夹', '代码测试', '文件夹选择测试')));
 
 // 任务管理
 const tasks = new Map();
@@ -167,6 +169,35 @@ app.get('/api/logs/:taskId', (req, res) => {
 
   req.on('close', () => {
     taskEmitter.removeListener(taskId, listener);
+  });
+});
+
+// ========== API: 原生文件夹选择对话框 ==========
+app.post('/api/select-folder', (req, res) => {
+  const cp = require('child_process');
+  // 调用 PowerShell 弹出原生文件夹对话框（无 cmd 窗口）
+  const psScript = `
+    Add-Type -AssemblyName System.Windows.Forms
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = '选择下载目录'
+    $dialog.ShowNewFolderButton = $true
+    if ($dialog.ShowDialog() -eq 'OK') {
+      Write-Output $dialog.SelectedPath
+    }
+  `;
+  const child = cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+    windowsHide: true,
+    timeout: 120000,
+  });
+  let stdout = '';
+  child.stdout.on('data', d => stdout += d);
+  child.on('close', code => {
+    const p = stdout.trim();
+    if (p) {
+      res.json({ ok: true, path: p });
+    } else {
+      res.json({ ok: false, error: '用户取消或选择失败' });
+    }
   });
 });
 
