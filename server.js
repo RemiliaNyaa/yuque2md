@@ -101,27 +101,21 @@ app.get('/api/logs/:taskId', (req, res) => {
   req.on('close', () => taskEmitter.removeListener(taskId, listener));
 });
 
-// ========== 文件夹选择（VBScript + 临时文件） ==========
+// ========== 文件夹选择 ==========
 function runDetachedDialog(res) {
-  const tmpFile = path.join(os.tmpdir(), 'yuque2md_select_' + Date.now() + '.txt');
-  const vbsFile = path.join(os.tmpdir(), 'yuque2md_dialog.vbs');
-  const vbs = `
-Set objShell = CreateObject("Shell.Application")
-Set objFolder = objShell.BrowseForFolder(0, "选择下载目录", 0, 0)
-If Not objFolder Is Nothing Then
-  Set fso = CreateObject("Scripting.FileSystemObject")
-  Set f = fso.CreateTextFile("${tmpFile.replace(/\\/g, '\\\\')}", True, True)
-  f.Write objFolder.Self.Path
-  f.Close
-End If
-`.trim();
-  fs.writeFileSync(vbsFile, vbs, 'utf-8');
   const cp = require('child_process');
-  cp.exec(`cmd /c start /min cscript //Nologo "${vbsFile}"`, { timeout: 120000 }, () => {
-    setTimeout(() => {
-      try { const p = fs.readFileSync(tmpFile, 'utf-8').trim(); fs.unlinkSync(tmpFile); fs.unlinkSync(vbsFile); res.json({ ok: true, path: p }); }
-      catch (e) { try { fs.unlinkSync(vbsFile); } catch (_) {} res.json({ ok: false, error: '用户取消或选择失败' }); }
-    }, 800);
+  const psScript = `
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $s = New-Object -ComObject Shell.Application
+    $f = $s.BrowseForFolder(0, '选择下载目录', 0, 0)
+    if ($f) { Write-Output $f.Self.Path }
+  `.trim();
+  const child = cp.execFile('powershell', ['-NoProfile', '-Command', psScript], { timeout: 120000 });
+  let stdout = '';
+  child.stdout.on('data', d => stdout += d);
+  child.on('close', () => {
+    const p = stdout.trim();
+    res.json(p ? { ok: true, path: p } : { ok: false, error: '用户取消' });
   });
 }
 
