@@ -1,20 +1,13 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const axios = require('axios');
 const EventEmitter = require('events');
 const {
-  setLogCallback,
-  fetchAllKbs,
-  fetchKbInfo,
-  buildDedupMap,
-  getPathToDoc,
-  getAllDocNodes,
-  downloadDoc,
-  downloadResourcesForMd,
-  buildHeaders,
-  safeName,
-  ensureDir,
+  setLogCallback, fetchAllKbs, fetchKbInfo, buildDedupMap,
+  getPathToDoc, getAllDocNodes, downloadDoc, downloadResourcesForMd,
+  buildHeaders, safeName, ensureDir,
 } = require('./yuque_download');
 
 const app = express();
@@ -22,314 +15,107 @@ const PORT = 3456;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-// 测试页面
 app.use('/test/folder', express.static(path.join(__dirname, '..', '临时文件夹', '代码测试', '文件夹选择测试')));
 
-// 任务管理
 const tasks = new Map();
 const taskEmitter = new EventEmitter();
+function emitLog(taskId, msg) { taskEmitter.emit(taskId, msg); }
 
-function emitLog(taskId, msg) {
-  taskEmitter.emit(taskId, msg);
-}
-
-// ========== API: 获取知识库列表 ==========
+// ========== 知识库列表 ==========
 app.post('/api/kbs', async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ ok: false, error: '缺少 token' });
-
     const kbs = await fetchAllKbs(token);
     res.json({ ok: true, kbs });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// ========== API: 获取知识库 TOC ==========
+// ========== TOC 树 ==========
 app.post('/api/toc', async (req, res) => {
   try {
     const { token, kbUrl } = req.body;
     if (!token || !kbUrl) return res.status(400).json({ ok: false, error: '缺少参数' });
-
     const kbInfo = await fetchKbInfo(kbUrl, token);
     const nameMap = buildDedupMap(kbInfo.toc);
-
-    // 构建完整嵌套树
     function buildTree(parentUuid) {
-      const children = kbInfo.toc.filter(item => {
-        const pid = item.parent_uuid || '';
-        const targetPid = parentUuid || '';
-        return pid === targetPid;
-      });
+      const children = kbInfo.toc.filter(item => (item.parent_uuid || '') === (parentUuid || ''));
       children.sort((a, b) => (a.order || 0) - (b.order || 0));
-
       return children.map(item => ({
-        uuid: item.uuid,
-        title: item.title,
-        type: item.type,
-        url: item.url || null,
+        uuid: item.uuid, title: item.title, type: item.type, url: item.url || null,
         child_uuid: item.child_uuid || null,
         displayName: nameMap.get(item.uuid) || safeName(item.title),
         isDeduped: (nameMap.get(item.uuid) || safeName(item.title)) !== safeName(item.title),
         children: buildTree(item.uuid),
       }));
     }
-
-    res.json({
-      ok: true,
-      kb: { bookId: kbInfo.bookId, bookName: kbInfo.bookName, host: kbInfo.host },
-      tree: buildTree(null),
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+    res.json({ ok: true, kb: { bookId: kbInfo.bookId, bookName: kbInfo.bookName, host: kbInfo.host }, tree: buildTree(null) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// ========== API: 下载选定文档 ==========
+// ========== 下载 ==========
 app.post('/api/download', async (req, res) => {
   try {
     const { token, kbUrl, uuids, downloadResources, outputDir: customDir } = req.body;
-    if (!token || !kbUrl || !uuids || !uuids.length) {
-      return res.status(400).json({ ok: false, error: '缺少参数' });
-    }
-
+    if (!token || !kbUrl || !uuids?.length) return res.status(400).json({ ok: false, error: '缺少参数' });
     const taskId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-
     setLogCallback((msg) => emitLog(taskId, msg));
     emitLog(taskId, `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] 开始下载...`);
-
     tasks.set(taskId, { status: 'running', startTime: Date.now() });
 
-    // 异步执行下载
     (async () => {
       try {
         const kbInfo = await fetchKbInfo(kbUrl, token);
         const nameMap = buildDedupMap(kbInfo.toc);
-        const kbDir = customDir
+        const outputDir = customDir
           ? path.join(customDir, safeName(kbInfo.bookName))
           : path.join(__dirname, 'yuque_output', safeName(kbInfo.bookName));
-        const outputDir = kbDir;
-
-        // 清理旧输出
-        if (fs.existsSync(outputDir)) {
-          emitLog(taskId, `清理旧输出目录...`);
-          fs.rmSync(outputDir, { recursive: true, force: true });
-        }
-
+        if (fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); fs.rmSync(outputDir, { recursive: true, force: true }); }
         let success = 0, fail = 0;
-        const uuidSet = new Set(uuids);
-
-        // 收集所有要下载的文档（包括子文档）
         const allDocs = getAllDocNodes(kbInfo.toc);
-        const docsToDownload = allDocs.filter(doc => uuidSet.has(doc.uuid));
-
+        const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));
         for (let i = 0; i < docsToDownload.length; i++) {
           const doc = docsToDownload[i];
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
-
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
           const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources);
-
-          if (result.ok) success++;
-          else fail++;
+          if (result.ok) success++; else fail++;
         }
-
         emitLog(taskId, `\n完成! 成功: ${success}, 失败: ${fail}`);
         emitLog(taskId, `文件保存在: ${outputDir}`);
         emitLog(taskId, '__DONE__');
         tasks.set(taskId, { status: 'done', outputDir });
-      } catch (e) {
-        emitLog(taskId, `\n❌ 出错: ${e.message}`);
-        emitLog(taskId, '__DONE__');
-        tasks.set(taskId, { status: 'error', error: e.message });
-      }
+      } catch (e) { emitLog(taskId, `\n❌ 出错: ${e.message}`); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'error', error: e.message }); }
     })();
-
     res.json({ ok: true, taskId });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// ========== SSE 日志推送 ==========
+// ========== SSE 日志 ==========
 app.get('/api/logs/:taskId', (req, res) => {
   const { taskId } = req.params;
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
-
-  const listener = (msg) => {
-    res.write(`data: ${msg}\n\n`);
-    if (msg === '__DONE__') {
-      res.end();
-      taskEmitter.removeListener(taskId, listener);
-    }
-  };
-
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  const listener = (msg) => { res.write(`data: ${msg}\n\n`); if (msg === '__DONE__') { res.end(); taskEmitter.removeListener(taskId, listener); } };
   taskEmitter.on(taskId, listener);
-
-  req.on('close', () => {
-    taskEmitter.removeListener(taskId, listener);
-  });
+  req.on('close', () => taskEmitter.removeListener(taskId, listener));
 });
 
-// ========== API: 获取文档内容（供浏览器侧写入） ==========
-app.post('/api/fetch-docs', async (req, res) => {
-  try {
-    const { token, kbUrl, uuids } = req.body;
-    if (!token || !kbUrl || !uuids?.length) return res.status(400).json({ ok: false, error: '缺少参数' });
-
-    const kbInfo = await fetchKbInfo(kbUrl, token);
-    const nameMap = buildDedupMap(kbInfo.toc);
-    const allDocs = getAllDocNodes(kbInfo.toc);
-    const uuidSet = new Set(uuids);
-    const selected = allDocs.filter(d => uuidSet.has(d.uuid));
-
-    const results = [];
-    for (const doc of selected) {
-      try {
-        const articleUrl = doc.url;
-        if (!articleUrl) continue;
-
-        const apiUrl = `${kbInfo.host}/api/docs/${articleUrl}?book_id=${String(kbInfo.bookId)}&mode=markdown&merge_dynamic_data=false`;
-        const headers = buildHeaders(token);
-        const resp = await axios.get(apiUrl, { headers, timeout: 30000 });
-        const docData = resp.data;
-
-        let body = '';
-        if (docData?.data?.sourcecode) body = docData.data.sourcecode;
-        else if (docData?.data?.body) body = docData.data.body;
-        else {
-          try {
-            const altUrl = `${kbInfo.host}/api/docs/${articleUrl}?book_id=${String(kbInfo.bookId)}`;
-            const altResp = await axios.get(altUrl, { headers, timeout: 30000 });
-            if (altResp.data?.data?.content) body = altResp.data.data.content;
-          } catch (e) {}
-        }
-
-        const docName = nameMap.get(doc.uuid) || safeName(doc.title);
-        const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-        const content = '# ' + doc.title + '\n\n' + (body || '');
-        results.push({
-          uuid: doc.uuid,
-          title: doc.title,
-          docName: docName,
-          dirPath: docPath.join('/'),
-          content: content,
-          size: content.length,
-        });
-      } catch (e) {
-        results.push({ uuid: doc.uuid, title: doc.title, error: e.message });
-      }
-    }
-
-    res.json({ ok: true, kbName: kbInfo.bookName, total: results.length, docs: results });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// ========== API: 文件夹选择测试端点 ==========
-function runSelectFolder(psScript, options = {}) {
-  return new Promise((resolve) => {
-    const cp = require('child_process');
-    const child = cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
-      timeout: 120000,
-      ...options,
-    });
-    let stdout = '';
-    child.stdout.on('data', d => stdout += d);
-    child.stderr.on('data', d => stdout += d);
-    child.on('close', code => {
-      const p = stdout.trim();
-      resolve({ ok: !!p, path: p || null, exitCode: code });
-    });
+// ========== 文件夹选择（独立进程 + 临时文件） ==========
+function runDetachedDialog(res) {
+  const tmpFile = path.join(os.tmpdir(), 'yuque2md_select_' + Date.now() + '.txt');
+  const escapedTmp = tmpFile.replace(/\\/g, '\\\\');
+  const script = `\\"[Console]::OutputEncoding=[Text.Encoding]::UTF8;$s=New-Object -ComObject Shell.Application;$f=$s.BrowseForFolder(0,'选择下载目录',0,0);if($f){Set-Content -Path '${escapedTmp}' -Value $f.Self.Path -Encoding UTF8}\\"`;
+  require('child_process').exec(`cmd /c start /min powershell -NoProfile -Command ${script}`, { windowsHide: true, timeout: 120000 }, () => {
+    setTimeout(() => {
+      try { const p = fs.readFileSync(tmpFile, 'utf-8').trim(); fs.unlinkSync(tmpFile); res.json({ ok: true, path: p }); }
+      catch (e) { res.json({ ok: false, error: '用户取消或选择失败' }); }
+    }, 500);
   });
 }
 
-app.post('/api/test-select-folder-1', async (req, res) => {
-  // 方案1: windowsHide: true (当前方案)
-  const r = await runSelectFolder(`
-    Add-Type -AssemblyName System.Windows.Forms
-    $d = New-Object System.Windows.Forms.FolderBrowserDialog
-    $d.Description = 'test-1: windowsHide'
-    if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }
-  `, { windowsHide: true });
-  res.json({ scheme: 'windowsHide', ...r });
-});
-
-app.post('/api/test-select-folder-2', async (req, res) => {
-  // 方案2: 不加 windowsHide
-  const r = await runSelectFolder(`
-    Add-Type -AssemblyName System.Windows.Forms
-    $d = New-Object System.Windows.Forms.FolderBrowserDialog
-    $d.Description = 'test-2: no windowsHide'
-    if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }
-  `);
-  res.json({ scheme: 'no windowsHide', ...r });
-});
-
-app.post('/api/test-select-folder-3', async (req, res) => {
-  // 方案3: 用 .NET OpenFileDialog (文件夹模式) + ShowDialog(IWin32Window)
-  const r = await runSelectFolder(`
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type @'
-    using System;
-    using System.Runtime.InteropServices;
-    public class Win32 {
-      [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    }
-'@
-    $d = New-Object System.Windows.Forms.FolderBrowserDialog
-    $d.Description = 'test-3: GetForegroundWindow'
-    $owner = New-Object System.Windows.Forms.NativeWindow
-    $owner.AssignHandle([Win32]::GetForegroundWindow())
-    if ($d.ShowDialog($owner) -eq 'OK') { Write-Output $d.SelectedPath }
-  `);
-  res.json({ scheme: 'foreground window', ...r });
-});
-
-app.post('/api/test-select-folder-4', async (req, res) => {
-  // 方案4: Shell COM + windowsHide + UTF8
-  const r = await runSelectFolder(`
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
-    $shell = New-Object -ComObject Shell.Application
-    $folder = $shell.BrowseForFolder(0, 'test-4: Shell BrowseForFolder', 0, 0)
-    if ($folder) { Write-Output $folder.Self.Path }
-  `, { windowsHide: true });
-  res.json({ scheme: 'Shell BrowseForFolder + windowsHide', ...r });
-});
-
-// ========== API: 原生文件夹选择对话框 ==========
-app.post('/api/select-folder', (req, res) => {
-  const cp = require('child_process');
-  const psScript = `
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
-    $shell = New-Object -ComObject Shell.Application
-    $folder = $shell.BrowseForFolder(0, '选择下载目录', 0, 0)
-    if ($folder) { Write-Output $folder.Self.Path }
-  `;
-  const child = cp.execFile('powershell', ['-NoProfile', '-Command', psScript], {
-    windowsHide: true,
-    timeout: 120000,
-  });
-  let stdout = '';
-  child.stdout.on('data', d => stdout += d);
-  child.on('close', code => {
-    const p = stdout.trim();
-    if (p) {
-      res.json({ ok: true, path: p });
-    } else {
-      res.json({ ok: false, error: '用户取消或选择失败' });
-    }
-  });
-});
+app.post('/api/select-folder', (req, res) => runDetachedDialog(res));
+app.post('/api/test-select-folder-1', (req, res) => runDetachedDialog(res));
 
 // ========== 启动 ==========
-app.listen(PORT, () => {
-  console.log(`yuque2md GUI 已启动: http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`yuque2md GUI 已启动: http://localhost:${PORT}`));
