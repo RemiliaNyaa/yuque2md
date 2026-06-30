@@ -118,15 +118,68 @@ async function connect() {
 // ========== 知识库列表 ==========
 function renderKbList() {
   const panel = document.getElementById('treePanel');
-  panel.innerHTML = kbs.map(kb => {
+  let html = '<div style="padding:4px 0 8px;border-bottom:1px solid #0f3460;margin-bottom:6px">' +
+    '<label style="cursor:pointer;font-size:13px"><input type="checkbox" id="chkAllKbs" onchange="toggleAllKbs(this.checked)" style="margin-right:4px"> 全选所有知识库</label></div>';
+  html += kbs.map(kb => {
     const ns = kb.namespace || '?';
-    return `<div class="kb-card" onclick="toggleKb(this, '${kb.id}', '${ns}', '${kb.slug}')">
-      <span class="icon">📚</span>
-      <span class="info"><div class="name">${esc(kb.name)}</div><div class="meta">${kb.items_count || '?'} 篇文档</div></span>
-      <span class="expand" id="exp-${kb.id}">▶</span>
+    return `<div class="kb-card">
+      <input type="checkbox" class="kb-cb" id="kb-cb-${kb.id}" data-kbid="${kb.id}" data-ns="${ns}" data-slug="${kb.slug}" onclick="event.stopPropagation();toggleKbSelect('${kb.id}')" title="全选此知识库">
+      <span class="icon" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')">📚</span>
+      <span class="info" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')"><div class="name">${esc(kb.name)}</div><div class="meta">${kb.items_count || '?'} 篇文档</div></span>
+      <span class="expand" id="exp-${kb.id}" onclick="toggleKb(this.parentElement, '${kb.id}', '${ns}', '${kb.slug}')">▶</span>
     </div>
     <div id="kb-${kb.id}" class="tree-children"></div>`;
   }).join('');
+  panel.innerHTML = html;
+}
+
+async function toggleKbSelect(bookId) {
+  const kbCb = document.getElementById('kb-cb-' + bookId);
+  if (!kbCb) return;
+
+  // 如果树还没加载，先加载
+  if (!kbsData[bookId]) {
+    const kb = kbs.find(k => String(k.id) === bookId);
+    if (!kb) return;
+    const ns = kb.namespace || '?';
+    const kbUrl = 'https://www.yuque.com/' + ns + '/' + kb.slug;
+    try {
+      const resp = await fetch('/api/toc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, kbUrl }),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error);
+      kbsData[bookId] = { tree: data.tree, kb: data.kb };
+    } catch (e) {
+      log('❌ 加载知识库失败: ' + e.message);
+      kbCb.checked = false;
+      return;
+    }
+  }
+
+  // 勾选/取消该KB下所有文档
+  const container = document.getElementById('kb-' + bookId);
+  // 如果树还没渲染，先渲染
+  if (container && !container.querySelector('.cb')) {
+    container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
+  }
+
+  const checked = kbCb.checked;
+  if (container) {
+    container.querySelectorAll('.cb').forEach(c => { c.checked = checked; });
+  }
+  updateCount();
+}
+
+function toggleAllKbs(checked) {
+  document.querySelectorAll('.kb-cb').forEach(c => {
+    if (c.checked !== checked) {
+      c.checked = checked;
+      toggleKbSelect(c.dataset.kbid);
+    }
+  });
+  updateCount();
 }
 
 async function toggleKb(card, bookId, namespace, slug) {
@@ -275,63 +328,126 @@ function onRecursiveChange() {
 
 // ========== 统计 ==========
 function updateCount() {
-  const allCbs = document.querySelectorAll('.tree-children.expanded .cb, #treePanel > div:not(.tree-children) .cb');
+  // 统计所有选中文档数（包括KB全选 + 单独勾选）
   let count = 0;
-  allCbs.forEach(c => { if (c.checked) count++; });
-  // fallback: 如果上面找不到，统计所有的
-  if (count === 0) {
-    document.querySelectorAll('.tree-node .cb').forEach(c => { if (c.checked) count++; });
-  }
+  // KB 全选：统计每个被全选的知识库
+  document.querySelectorAll('.kb-cb:checked').forEach(kbCb => {
+    const bookId = kbCb.dataset.kbid;
+    const data = kbsData[bookId];
+    if (data) {
+      // 递归统计 DOC 数量
+      count += countDocs(data.tree);
+    }
+  });
+  // 单独勾选：统计非全选KB下的勾选（避免重复计数）
+  document.querySelectorAll('.tree-node .cb:checked').forEach(cb => {
+    const nodeEl = cb.closest('.tree-node');
+    if (nodeEl) {
+      const bookId = nodeEl.dataset.book;
+      const kbCb = document.getElementById('kb-cb-' + bookId);
+      if (!kbCb || !kbCb.checked) count++; // KB未全选时才加个体
+    }
+  });
   document.getElementById('lblCount').textContent = '已选 ' + count + ' 篇';
   document.getElementById('btnDownload').disabled = count === 0;
 }
 
+function countDocs(nodes) {
+  let n = 0;
+  for (const node of nodes) {
+    if (node.type === 'DOC') n++;
+    if (node.children) n += countDocs(node.children);
+  }
+  return n;
+}
+
 // ========== 下载 ==========
 async function startDownload() {
-  if (!activeBookId) { log('⚠ 请先选择知识库'); return; }
-  const data = kbsData[activeBookId];
-  if (!data) { log('❌ 知识库数据未加载'); return; }
+  const downloadResources = document.getElementById('chkResources').checked;
+  const btnDl = document.getElementById('btnDownload');
+  let totalDocs = 0;
 
-  const bookEl = document.getElementById('kb-' + activeBookId);
-  const allCbs = bookEl.querySelectorAll('.tree-node .cb:checked');
-  if (allCbs.length === 0) return;
-
-  const uuids = [];
-  allCbs.forEach(cb => {
-    const node = cb.closest('.tree-node');
-    if (node) uuids.push(node.dataset.uuid);
+  // 收集被全选的知识库
+  const selectedKbs = [];
+  document.querySelectorAll('.kb-cb:checked').forEach(kbCb => {
+    const bookId = kbCb.dataset.kbid;
+    const data = kbsData[bookId];
+    if (data) {
+      selectedKbs.push({ bookId, data, ns: kbCb.dataset.ns, slug: kbCb.dataset.slug, allUuids: collectAllUuids(data.tree) });
+      totalDocs += selectedKbs[selectedKbs.length - 1].allUuids.length;
+    }
   });
 
-  const kb = kbs.find(k => String(k.id) === activeBookId);
-  if (!kb) { log('❌ 未找到知识库'); return; }
+  // 收集被单独勾选的文档（非全选KB）
+  document.querySelectorAll('.tree-node .cb:checked').forEach(cb => {
+    const nodeEl = cb.closest('.tree-node');
+    if (!nodeEl) return;
+    const bookId = nodeEl.dataset.book;
+    const kbCb = document.getElementById('kb-cb-' + bookId);
+    if (kbCb && kbCb.checked) return; // KB已全选，跳过
 
-  const downloadResources = document.getElementById('chkResources').checked;
-  const kbUrl = 'https://www.yuque.com/' + (kb.namespace || '?') + '/' + kb.slug;
+    // 找到或创建这个KB的记录
+    let kbEntry = selectedKbs.find(k => k.bookId === bookId);
+    if (!kbEntry) {
+      const data = kbsData[bookId];
+      if (!data) return;
+      const kbCbEl = document.getElementById('kb-cb-' + bookId);
+      const ns = kbCbEl ? kbCbEl.dataset.ns : '';
+      const slug = kbCbEl ? kbCbEl.dataset.slug : '';
+      kbEntry = { bookId, data, ns, slug, allUuids: [] };
+      selectedKbs.push(kbEntry);
+    }
+    if (!kbEntry.allUuids.includes(nodeEl.dataset.uuid)) {
+      kbEntry.allUuids.push(nodeEl.dataset.uuid);
+      totalDocs++;
+    }
+  });
+
+  if (selectedKbs.length === 0) { log('⚠ 请先选择要下载的文档或知识库'); return; }
 
   log('\n' + '═'.repeat(50));
-  log('开始下载: ' + kb.name + ' (' + uuids.length + ' 篇)');
+  log('开始下载: ' + selectedKbs.length + ' 个知识库, ' + totalDocs + ' 篇');
 
-  const btnDl = document.getElementById('btnDownload');
   btnDl.disabled = true; btnDl.textContent = '下载中...';
 
-  try {
-    const resp = await fetch('/api/download', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, kbUrl, uuids, downloadResources }),
-    });
-    const result = await resp.json();
-    if (!result.ok) throw new Error(result.error);
+  for (const kbEntry of selectedKbs) {
+    const { bookId, data, ns, slug, allUuids } = kbEntry;
+    const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
+    const kbName = kbs.find(k => String(k.id) === bookId);
+    log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
 
-    const evtSource = new EventSource('/api/logs/' + result.taskId);
-    evtSource.onmessage = (e) => {
-      if (e.data === '__DONE__') { evtSource.close(); btnDl.disabled = false; btnDl.textContent = '下载已选文档'; return; }
-      log(e.data);
-    };
-    evtSource.onerror = () => { evtSource.close(); btnDl.disabled = false; btnDl.textContent = '下载已选文档'; };
-  } catch (e) {
-    log('❌ ' + e.message);
-    btnDl.disabled = false; btnDl.textContent = '下载已选文档';
+    try {
+      const resp = await fetch('/api/download', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, kbUrl, uuids: allUuids, downloadResources }),
+      });
+      const result = await resp.json();
+      if (!result.ok) throw new Error(result.error);
+
+      const evtSource = new EventSource('/api/logs/' + result.taskId);
+      await new Promise((resolve) => {
+        evtSource.onmessage = (e) => {
+          if (e.data === '__DONE__') { evtSource.close(); resolve(); return; }
+          log(e.data);
+        };
+        evtSource.onerror = () => { evtSource.close(); resolve(); };
+      });
+    } catch (e) {
+      log('  ❌ ' + e.message);
+    }
   }
+
+  btnDl.disabled = false; btnDl.textContent = '下载已选文档';
+  log('全部完成');
+}
+
+function collectAllUuids(nodes) {
+  let uuids = [];
+  for (const node of nodes) {
+    if (node.type === 'DOC') uuids.push(node.uuid);
+    if (node.children) uuids = uuids.concat(collectAllUuids(node.children));
+  }
+  return uuids;
 }
 
 // 事件委托：处理所有动态生成的checkbox
