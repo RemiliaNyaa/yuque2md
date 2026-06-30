@@ -276,7 +276,7 @@ function onRecursiveChange() {
 // ========== 统计 ==========
 function updateCount() {
   // 只统计 DOC 类型
-  const activeCbs = document.querySelectorAll('#kb-' + (activeBookId || '') + ' .cb');
+  const activeCbs = document.querySelectorAll('[id="kb-' + activeBookId + '"] .cb');
   let count = 0;
   activeCbs.forEach(c => {
     const nodeEl = c.closest('.tree-node');
