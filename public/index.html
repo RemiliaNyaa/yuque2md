@@ -3,418 +3,334 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>语雀文档下载工具</title>
+<title>yuque2md - 语雀文档下载</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background: #f5f7fa;
-    color: #333;
-    min-height: 100vh;
-  }
-  .header {
-    background: linear-gradient(135deg, #2d8c4a 0%, #1a6b34 100%);
-    color: #fff;
-    padding: 20px 32px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-  }
-  .header h1 { font-size: 20px; font-weight: 600; letter-spacing: 0.5px; }
-  .header .badge { font-size: 11px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; }
-  .container { max-width: 800px; margin: 0 auto; padding: 24px 20px 40px; }
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    padding: 24px;
-    margin-bottom: 20px;
-  }
-  .card-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #1a1a1a;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #f0f0f0;
-  }
-  .form-group { margin-bottom: 16px; }
-  .form-group label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: #555;
-    margin-bottom: 6px;
-  }
-  .form-group .hint {
-    font-size: 12px;
-    color: #999;
-    font-weight: 400;
-    margin-left: 4px;
-  }
-  input[type="text"], input[type="password"] {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1.5px solid #e0e0e0;
-    border-radius: 8px;
-    font-size: 14px;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    background: #fafafa;
-  }
-  input[type="text"]:focus, input[type="password"]:focus {
-    outline: none;
-    border-color: #2d8c4a;
-    box-shadow: 0 0 0 3px rgba(45,140,74,0.1);
-    background: #fff;
-  }
-  .mode-selector {
-    display: flex;
-    gap: 8px;
-  }
-  .mode-btn {
-    flex: 1;
-    padding: 10px 12px;
-    border: 1.5px solid #e0e0e0;
-    background: #fafafa;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    color: #666;
-    transition: all 0.2s;
-    text-align: center;
-  }
-  .mode-btn:hover { border-color: #2d8c4a; color: #2d8c4a; }
-  .mode-btn.active {
-    background: #eaf7ee;
-    border-color: #2d8c4a;
-    color: #2d8c4a;
-    font-weight: 600;
-  }
-  .checkbox-group { display: flex; gap: 20px; flex-wrap: wrap; }
-  .checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 13px;
-    color: #555;
-    cursor: pointer;
-  }
-  .checkbox-item input[type="checkbox"] {
-    width: 16px; height: 16px;
-    accent-color: #2d8c4a;
-    cursor: pointer;
-  }
-  .url-row { display: none; }
-  .url-row.visible { display: block; }
-  .actions { margin-top: 20px; display: flex; gap: 12px; }
-  .btn {
-    padding: 10px 28px;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-primary {
-    background: linear-gradient(135deg, #2d8c4a 0%, #1a6b34 100%);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(45,140,74,0.3);
-  }
-  .btn-primary:hover { box-shadow: 0 4px 12px rgba(45,140,74,0.4); transform: translateY(-1px); }
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-  .btn-secondary {
-    background: #f0f0f0;
-    color: #555;
-  }
-  .btn-secondary:hover { background: #e5e5e5; }
-  .log-panel {
-    background: #1e1e1e;
-    border-radius: 10px;
-    padding: 16px;
-    height: 320px;
-    overflow-y: auto;
-    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace;
-    font-size: 12.5px;
-    line-height: 1.7;
-    color: #d4d4d4;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .log-panel .log-line { animation: fadeIn 0.15s ease-out; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .log-panel::-webkit-scrollbar { width: 6px; }
-  .log-panel::-webkit-scrollbar-track { background: transparent; }
-  .log-panel::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
-    font-size: 13px;
-    color: #888;
-  }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #ccc;
-  }
-  .status-dot.running { background: #2d8c4a; animation: pulse 1s ease-in-out infinite; }
-  .status-dot.done { background: #2d8c4a; }
-  .status-dot.error { background: #e74c3c; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .dir-row {
-    display: flex;
-    gap: 8px;
-  }
-  .dir-row input { flex: 1; }
-  .btn-browse {
-    padding: 10px 16px;
-    border: 1.5px solid #e0e0e0;
-    border-radius: 8px;
-    background: #fafafa;
-    font-size: 13px;
-    cursor: pointer;
-    color: #555;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .btn-browse:hover { border-color: #2d8c4a; color: #2d8c4a; background: #eaf7ee; }
-  .token-warning {
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: #fff8e1;
-    border: 1px solid #ffe082;
-    border-radius: 6px;
-    font-size: 12px;
-    color: #8d6e00;
-    display: none;
-  }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+.header { padding: 16px 20px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.header h1 { font-size: 18px; color: #e94560; white-space: nowrap; }
+.token-input { flex: 1; padding: 10px 14px; border: 1px solid #0f3460; border-radius: 6px; background: #1a1a2e; color: #e0e0e0; font-size: 13px; outline: none; min-width: 0; }
+.token-input:focus { border-color: #e94560; }
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .2s; }
+.btn-connect { background: #e94560; color: #fff; }
+.btn-connect:hover { background: #d63851; }
+.btn-connect.loading { opacity: .6; pointer-events: none; }
+.btn-connect.done { background: #2ecc71; pointer-events: none; }
+.main { flex: 1; display: flex; overflow: hidden; }
+.tree-panel { width: 380px; flex-shrink: 0; overflow-y: auto; padding: 10px; border-right: 1px solid #0f3460; background: #16213e; }
+.tree-panel::-webkit-scrollbar { width: 6px; }
+.tree-panel::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+.log-panel { flex: 1; overflow-y: auto; padding: 12px; font-family: 'Consolas','Courier New',monospace; font-size: 12px; background: #0d1117; white-space: pre-wrap; line-height: 1.6; }
+.log-panel::-webkit-scrollbar { width: 6px; }
+.log-panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+.kb-card { padding: 10px 12px; margin-bottom: 6px; background: #1a1a2e; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; }
+.kb-card:hover { border-color: #e94560; }
+.kb-card.active { border-color: #e94560; }
+.kb-card .icon { font-size: 20px; }
+.kb-card .info { flex: 1; min-width: 0; }
+.kb-card .name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-card .meta { font-size: 11px; color: #888; margin-top: 2px; }
+.kb-card .expand { font-size: 18px; color: #888; flex-shrink: 0; transition: transform .15s; }
+.kb-card .expand.open { transform: rotate(90deg); }
+
+.tree-children { padding-left: 20px; display: none; }
+.tree-children.expanded { display: block; }
+.tree-node { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.tree-node:hover { background: #1a1a2e; }
+.tree-node .toggle { width: 16px; font-size: 10px; color: #888; text-align: center; flex-shrink: 0; user-select: none; }
+.tree-node .toggle.leaf { visibility: hidden; }
+.tree-node .cb { -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #555; border-radius: 3px; flex-shrink: 0; cursor: pointer; background: transparent; position: relative; }
+.tree-node .cb:checked { background: #e94560; border-color: #e94560; }
+.tree-node .cb:checked::after { content: '✓'; position: absolute; top: -1px; left: 2px; color: #fff; font-size: 10px; font-weight: bold; }
+.tree-node .node-icon { flex-shrink: 0; font-size: 14px; }
+.tree-node .node-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-node.folder .node-name { font-weight: 500; }
+
+.toolbar { padding: 10px 20px; background: #16213e; border-top: 1px solid #0f3460; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.toolbar label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toolbar label input { cursor: pointer; }
+.toolbar .btn-dl { background: #e94560; color: #fff; min-width: 100px; }
+.toolbar .btn-dl:hover { background: #d63851; }
+.toolbar .btn-dl:disabled { opacity: .4; pointer-events: none; }
+.toolbar .count { font-size: 12px; color: #888; min-width: 60px; }
+
+.placeholder { color: #555; padding: 40px 20px; text-align: center; font-size: 14px; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #0f3460; border-top-color: #e94560; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-tree { color: #888; padding: 8px 4px; font-size: 12px; }
 </style>
 </head>
 <body>
-
 <div class="header">
-  <span style="font-size:24px;">📚</span>
-  <h1>语雀文档下载工具</h1>
-  <span class="badge">Web GUI</span>
+  <h1>yuque2md</h1>
+  <input class="token-input" id="token" type="password" placeholder="粘贴语雀 _yuque_session token">
+  <button class="btn btn-connect" id="btnConnect" onclick="connect()">连接</button>
 </div>
-
-<div class="container">
-  <!-- 设置面板 -->
-  <div class="card">
-    <div class="card-title">⚙️ 下载设置</div>
-
-    <div class="form-group">
-      <label>Token <span class="hint">（从语雀 Cookie 获取 _yuque_session）</span></label>
-      <input type="password" id="token" placeholder="粘贴你的 _yuque_session token...">
-    </div>
-
-    <div class="form-group">
-      <label>下载模式</label>
-      <div class="mode-selector">
-        <button class="mode-btn active" data-mode="all" onclick="switchMode('all')">📦 全部知识库</button>
-        <button class="mode-btn" data-mode="kb" onclick="switchMode('kb')">📁 指定知识库</button>
-        <button class="mode-btn" data-mode="doc" onclick="switchMode('doc')">📄 指定文档</button>
-      </div>
-    </div>
-
-    <div class="form-group url-row" id="urlRow">
-      <label>语雀 URL</label>
-      <input type="text" id="url" placeholder="粘贴语雀知识库或文档的 URL...">
-    </div>
-
-    <div class="form-group">
-      <label>选项</label>
-      <div class="checkbox-group">
-        <label class="checkbox-item" id="subOption" style="display:none">
-          <input type="checkbox" id="withSub">
-          含子文档
-        </label>
-        <label class="checkbox-item">
-          <input type="checkbox" id="downloadImages">
-          下载图片到本地（-i）
-        </label>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label>输出目录 <span class="hint">（默认: ./yuque_output）</span></label>
-      <div class="dir-row">
-        <input type="text" id="outputDir" placeholder="./yuque_output">
-        <button class="btn-browse" id="browseBtn" onclick="selectDir()">📂 浏览</button>
-      </div>
-    </div>
-
-    <div class="token-warning" id="tokenWarning">⚠️ 请先填写 Token</div>
-
-    <div class="actions">
-      <button class="btn btn-primary" id="downloadBtn" onclick="startDownload()">🚀 开始下载</button>
-    </div>
+<div class="main">
+  <div class="tree-panel" id="treePanel">
+    <div class="placeholder">👆 输入 Token 连接语雀账号</div>
   </div>
-
-  <!-- 日志面板 -->
-  <div class="card">
-    <div class="card-title">📋 下载日志</div>
-    <div class="log-panel" id="logPanel">
-      <span style="color:#888;">等待开始下载...</span>
-    </div>
-    <div class="status-bar">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">就绪</span>
-    </div>
-  </div>
+  <div class="log-panel" id="logPanel"></div>
+</div>
+<div class="toolbar">
+  <label><input type="checkbox" id="chkRecursive" checked onchange="onRecursiveChange()"> 🔄 递归选择</label>
+  <label><input type="checkbox" id="chkResources"> 📦 下载静态资源 (-r)</label>
+  <span class="count" id="lblCount">已选 0 篇</span>
+  <button class="btn btn-dl" id="btnDownload" onclick="startDownload()" disabled>下载已选文档</button>
 </div>
 
 <script>
-let currentMode = 'all';
-let isRunning = false;
-let eventSource = null;
+let token = '';
+let kbs = [];
+let kbsData = {}; // bookId → { tree, kb }
+let activeBookId = null;
 
-function switchMode(mode) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  document.getElementById('urlRow').classList.toggle('visible', mode === 'kb' || mode === 'doc');
-  document.getElementById('subOption').style.display = mode === 'doc' ? 'flex' : 'none';
-}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function log(msg) { const p = document.getElementById('logPanel'); p.textContent += msg + '\n'; p.scrollTop = p.scrollHeight; }
 
-async function selectDir() {
-  const btn = document.getElementById('browseBtn');
-  const orig = btn.textContent;
-  btn.textContent = '⏳';
-  btn.disabled = true;
-  try {
-    const resp = await fetch('/api/select-dir', { method: 'POST' });
-    const data = await resp.json();
-    if (data.path) {
-      document.getElementById('outputDir').value = data.path;
-    } else if (data.error) {
-      addLog(`⚠️ 选择文件夹失败: ${data.error}`);
-    }
-  } catch (e) {
-    addLog(`⚠️ 选择文件夹失败: ${e.message}`);
-  } finally {
-    btn.textContent = orig;
-    btn.disabled = false;
-  }
-}
+// ========== 连接 ==========
+async function connect() {
+  token = document.getElementById('token').value.trim();
+  if (!token) return alert('请输入 Token');
 
-function setStatus(status) {
-  const dot = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-  dot.className = 'status-dot';
-  if (status === 'running') { dot.classList.add('running'); text.textContent = '下载中...'; }
-  else if (status === 'done') { dot.classList.add('done'); text.textContent = '完成'; }
-  else if (status === 'error') { dot.classList.add('error'); text.textContent = '出错'; }
-  else { text.textContent = '就绪'; }
-}
-
-function addLog(msg) {
-  const panel = document.getElementById('logPanel');
-  // 清除初始占位文字
-  if (panel.querySelector('span[style]')) panel.innerHTML = '';
-  const div = document.createElement('div');
-  div.className = 'log-line';
-  div.textContent = msg;
-  panel.appendChild(div);
-  panel.scrollTop = panel.scrollHeight;
-}
-
-async function startDownload() {
-  const token = document.getElementById('token').value.trim();
-  const url = document.getElementById('url').value.trim();
-  const withSub = document.getElementById('withSub').checked;
-  const downloadImages = document.getElementById('downloadImages').checked;
-  const outputDir = document.getElementById('outputDir').value.trim();
-  const warning = document.getElementById('tokenWarning');
-  const btn = document.getElementById('downloadBtn');
-
-  // 校验
-  if (!token) {
-    warning.style.display = 'block';
-    return;
-  }
-  warning.style.display = 'none';
-
-  if ((currentMode === 'kb' || currentMode === 'doc') && !url) {
-    addLog('❌ 请填写语雀 URL');
-    return;
-  }
-
-  if (isRunning) return;
-  isRunning = true;
-  btn.disabled = true;
-  btn.textContent = '⏳ 下载中...';
-
-  // 清空日志
-  const panel = document.getElementById('logPanel');
-  panel.innerHTML = '';
-  setStatus('running');
+  const btn = document.getElementById('btnConnect');
+  btn.textContent = '连接中...'; btn.classList.add('loading');
 
   try {
-    // 发起下载请求
-    const resp = await fetch('/api/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, url, mode: currentMode, withSub, downloadImages, outputDir: outputDir || undefined }),
+    const resp = await fetch('/api/kbs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
     });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error);
+    kbs = data.kbs;
+    btn.textContent = '已连接 ✓'; btn.classList.add('done');
+    log('✅ 连接成功，共 ' + kbs.length + ' 个知识库');
+    renderKbList();
+  } catch (e) {
+    btn.textContent = '重试'; btn.classList.remove('loading');
+    log('❌ 连接失败: ' + e.message);
+  }
+}
 
-    if (!resp.ok) {
-      const err = await resp.json();
-      addLog(`❌ 请求失败: ${err.error}`);
-      setStatus('error');
-      isRunning = false;
-      btn.disabled = false;
-      btn.textContent = '🚀 开始下载';
+// ========== 知识库列表 ==========
+function renderKbList() {
+  const panel = document.getElementById('treePanel');
+  panel.innerHTML = kbs.map(kb => {
+    const ns = kb.namespace || '?';
+    return `<div class="kb-card" onclick="toggleKb(this, '${kb.id}', '${ns}', '${kb.slug}')">
+      <span class="icon">📚</span>
+      <span class="info"><div class="name">${esc(kb.name)}</div><div class="meta">${kb.items_count || '?'} 篇文档</div></span>
+      <span class="expand" id="exp-${kb.id}">▶</span>
+    </div>
+    <div id="kb-${kb.id}" class="tree-children"></div>`;
+  }).join('');
+}
+
+async function toggleKb(card, bookId, namespace, slug) {
+  const container = document.getElementById('kb-' + bookId);
+  const expandEl = document.getElementById('exp-' + bookId);
+
+  if (container.classList.contains('expanded')) {
+    container.classList.remove('expanded');
+    expandEl.classList.remove('open');
+    return;
+  }
+
+  document.querySelectorAll('.kb-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  activeBookId = bookId;
+
+  if (!kbsData[bookId]) {
+    container.innerHTML = '<div class="loading-tree"><span class="spinner"></span>加载文档树...</div>';
+    container.classList.add('expanded');
+    expandEl.classList.add('open');
+
+    try {
+      const kbUrl = 'https://www.yuque.com/' + namespace + '/' + slug;
+      const resp = await fetch('/api/toc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, kbUrl }),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error);
+      kbsData[bookId] = { tree: data.tree, kb: data.kb };
+      log('📖 已加载知识库 "' + data.kb.bookName + '"');
+    } catch (e) {
+      container.innerHTML = '<div class="placeholder">❌ ' + esc(e.message) + '</div>';
       return;
     }
+  }
 
-    const { taskId } = await resp.json();
+  container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
+  container.classList.add('expanded');
+  expandEl.classList.add('open');
+}
 
-    // 建立 SSE 连接获取实时日志
-    eventSource = new EventSource(`/api/logs/${taskId}`);
+// ========== 递归渲染树 ==========
+function renderTree(nodes, bookId) {
+  return nodes.map(n => renderNode(n, bookId)).join('');
+}
 
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'log') {
-        addLog(data.message);
-      } else if (data.type === 'done') {
-        setStatus(data.result?.error ? 'error' : 'done');
-        eventSource.close();
-        eventSource = null;
-        isRunning = false;
-        btn.disabled = false;
-        btn.textContent = '🚀 开始下载';
-        if (data.result?.outputDir) {
-          addLog(`\n📁 文件保存在: ${data.result.outputDir}`);
-        }
-      }
+function renderNode(node, bookId) {
+  const isDoc = node.type === 'DOC';
+  const nodeId = bookId + '-' + node.uuid;
+  const hasChildren = node.children && node.children.length > 0;
+
+  let html = '<div class="tree-node' + (isDoc ? '' : ' folder') + '" data-uuid="' + node.uuid + '" data-book="' + bookId + '">';
+  html += '<span class="toggle' + (hasChildren ? '' : ' leaf') + '" onclick="event.stopPropagation();toggleNode(\'' + nodeId + '\')">' + (hasChildren ? '▶' : '') + '</span>';
+  html += '<input type="checkbox" class="cb" id="cb-' + nodeId + '" onchange="event.stopPropagation();onCheck(\'' + nodeId + '\')">';
+  html += '<span class="node-icon">' + (isDoc ? '📄' : '📁') + '</span>';
+  html += '<span class="node-name">' + esc(node.title) + (node.isDeduped ? ' <small style="color:#888">(' + node.uuid.slice(-8) + ')</small>' : '') + '</span>';
+  html += '</div>';
+
+  if (hasChildren) {
+    html += '<div id="ch-' + nodeId + '" class="tree-children">' + renderTree(node.children, bookId) + '</div>';
+  }
+
+  return html;
+}
+
+// ========== 展开/折叠 ==========
+function toggleNode(nodeId) {
+  const children = document.getElementById('ch-' + nodeId);
+  if (!children) return;
+  const toggle = document.querySelector('#cb-' + nodeId).parentElement.querySelector('.toggle');
+
+  if (children.classList.contains('expanded')) {
+    children.classList.remove('expanded');
+    if (toggle) toggle.textContent = '▶';
+  } else {
+    children.classList.add('expanded');
+    if (toggle) toggle.textContent = '▼';
+  }
+}
+
+// ========== 复选框 ==========
+function onCheck(nodeId) {
+  const cb = document.getElementById('cb-' + nodeId);
+  if (!cb) return;
+  const recursive = document.getElementById('chkRecursive').checked;
+
+  if (recursive) {
+    setChildrenCheckbox(nodeId, cb.checked);
+  }
+  updateParentCheckbox(nodeId);
+  updateCount();
+}
+
+function setChildrenCheckbox(nodeId, checked) {
+  const container = document.getElementById('ch-' + nodeId);
+  if (!container) return;
+  container.querySelectorAll('.cb').forEach(c => {
+    c.checked = checked;
+    // 递归
+    const parentEl = c.closest('.tree-node');
+    if (parentEl) {
+      const parts = c.id.split('-');
+      const childNodeId = parts.slice(0, -1).join('-') + '-' + parts[parts.length - 1];
+      setChildrenCheckbox(childNodeId, checked);
+    }
+  });
+}
+
+function updateParentCheckbox(nodeId) {
+  // 向上冒泡：如果所有兄弟都勾选了，勾选父节点
+  const parts = nodeId.split('-');
+  const uuid = parts[parts.length - 1];
+  const bookId = parts[0];
+
+  // 找到父容器
+  const cb = document.getElementById('cb-' + nodeId);
+  const nodeEl = cb ? cb.closest('.tree-node') : null;
+  if (!nodeEl) return;
+
+  // 向上找
+  let parentContainer = nodeEl.closest('.tree-children');
+  if (!parentContainer) return;
+
+  // 父节点 ID
+  const parentDiv = parentContainer.parentElement;
+  const parentNode = parentDiv ? parentDiv.querySelector('.tree-node') : null;
+  if (!parentNode) return;
+
+  const parentCb = parentNode.querySelector('.cb');
+  if (!parentCb) return;
+
+  const siblingCbs = parentContainer.querySelectorAll(':scope > .tree-node > .cb, :scope > div > .tree-node > .cb');
+  let allChecked = true;
+  siblingCbs.forEach(c => { if (!c.checked) allChecked = false; });
+  parentCb.checked = allChecked;
+
+  // 继续向上
+  const parentCbId = parentCb.id.replace('cb-', '');
+  updateParentCheckbox(parentCbId);
+}
+
+function onRecursiveChange() {
+  // 切换时不自动更新已有勾选，只在下次勾选时生效
+}
+
+// ========== 统计 ==========
+function updateCount() {
+  // 只统计 DOC 类型
+  const activeCbs = document.querySelectorAll('#kb-' + (activeBookId || '') + ' .cb');
+  let count = 0;
+  activeCbs.forEach(c => {
+    const nodeEl = c.closest('.tree-node');
+    if (nodeEl && c.checked) count++;
+  });
+  document.getElementById('lblCount').textContent = '已选 ' + count + ' 篇';
+  document.getElementById('btnDownload').disabled = count === 0;
+}
+
+// ========== 下载 ==========
+async function startDownload() {
+  if (!activeBookId) { log('⚠ 请先选择知识库'); return; }
+  const data = kbsData[activeBookId];
+  if (!data) { log('❌ 知识库数据未加载'); return; }
+
+  const bookEl = document.getElementById('kb-' + activeBookId);
+  const allCbs = bookEl.querySelectorAll('.tree-node .cb:checked');
+  if (allCbs.length === 0) return;
+
+  const uuids = [];
+  allCbs.forEach(cb => {
+    const node = cb.closest('.tree-node');
+    if (node) uuids.push(node.dataset.uuid);
+  });
+
+  const kb = kbs.find(k => String(k.id) === activeBookId);
+  if (!kb) { log('❌ 未找到知识库'); return; }
+
+  const downloadResources = document.getElementById('chkResources').checked;
+  const kbUrl = 'https://www.yuque.com/' + (kb.namespace || '?') + '/' + kb.slug;
+
+  log('\n' + '═'.repeat(50));
+  log('开始下载: ' + kb.name + ' (' + uuids.length + ' 篇)');
+
+  const btnDl = document.getElementById('btnDownload');
+  btnDl.disabled = true; btnDl.textContent = '下载中...';
+
+  try {
+    const resp = await fetch('/api/download', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, kbUrl, uuids, downloadResources }),
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.error);
+
+    const evtSource = new EventSource('/api/logs/' + result.taskId);
+    evtSource.onmessage = (e) => {
+      if (e.data === '__DONE__') { evtSource.close(); btnDl.disabled = false; btnDl.textContent = '下载已选文档'; return; }
+      log(e.data);
     };
-
-    eventSource.onerror = () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-      addLog('⚠️ 日志连接断开');
-      setStatus('done');
-      isRunning = false;
-      btn.disabled = false;
-      btn.textContent = '🚀 开始下载';
-    };
+    evtSource.onerror = () => { evtSource.close(); btnDl.disabled = false; btnDl.textContent = '下载已选文档'; };
   } catch (e) {
-    addLog(`❌ 网络错误: ${e.message}`);
-    setStatus('error');
-    isRunning = false;
-    btn.disabled = false;
-    btn.textContent = '🚀 开始下载';
+    log('❌ ' + e.message);
+    btnDl.disabled = false; btnDl.textContent = '下载已选文档';
   }
 }
 </script>

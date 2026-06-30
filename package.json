@@ -1,6 +1,6 @@
 {
   "name": "yuque2md",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "下载语雀文档为本地 markdown，支持命令行和 Web 界面两种方式",
   "main": "yuque_download.js",
   "scripts": {

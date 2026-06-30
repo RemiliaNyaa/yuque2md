@@ -109,6 +109,7 @@ async function fetchAllKbs(token) {
             name: book.name,
             slug: book.slug || book.namespace,
             namespace: book.namespace || (book.user && book.user.login) || '',
+            items_count: book.items_count || 0,
           });
         }
       }
@@ -714,6 +715,16 @@ module.exports = {
   downloadAllKbs,
   downloadEntireKb,
   downloadSingleDoc,
+  downloadDoc,
+  downloadResourcesForMd,
+  fetchAllKbs,
+  fetchKbInfo,
+  buildDedupMap,
+  getPathToDoc,
+  getAllDocNodes,
   parseKbUrl,
   parseDocUrl,
+  safeName,
+  ensureDir,
+  buildHeaders,
 };
