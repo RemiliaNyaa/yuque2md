@@ -150,67 +150,123 @@ async function fetchAllKbs(token) {
   throw new Error('无法获取知识库列表，所有方式均失败');
 }
 
-// ========== 图片下载 ==========
+// ========== 同名去重 ==========
 
-const IMG_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
+/**
+ * 构建去重名称映射
+ * TOC 中同目录下同名节点: TITLE用uuid后缀, DOC用url后缀
+ */
+function buildDedupMap(toc) {
+  const nameMap = new Map(); // uuid → deduped safeName
 
-// 匹配 cdn.nlark.com/yuque 的图片链接
-const YUQUE_IMG_PATTERN = new RegExp(
-  `https://cdn\\.nlark\\.com/yuque/[^\\s)"'<>]+?\\.(${IMG_EXTENSIONS.join('|')})(?:\\?[^\\s)"'<>]*)?`,
-  'gi'
-);
+  const byParent = {};
+  for (const node of toc) {
+    const pid = node.parent_uuid || '__root__';
+    if (!byParent[pid]) byParent[pid] = [];
+    byParent[pid].push(node);
+  }
 
-async function downloadImagesForMd(body, mdDirPath, token) {
-  const imagesDir = path.join(mdDirPath, 'images');
-  const matches = Array.from(body.matchAll(YUQUE_IMG_PATTERN));
+  for (const [, children] of Object.entries(byParent)) {
+    const nameCount = {};
+    for (const child of children) {
+      const key = child.type + '||' + child.title;
+      nameCount[key] = (nameCount[key] || 0) + 1;
+    }
 
-  if (matches.length === 0) return body;
+    for (const child of children) {
+      const key = child.type + '||' + child.title;
+      let name = safeName(child.title);
 
-  ensureDir(imagesDir);
-  let newBody = body;
-  const seen = new Set();
-  let downloadedCount = 0;
-
-  for (const match of matches) {
-    const url = match[0];
-    if (seen.has(url)) continue;
-    seen.add(url);
-
-    try {
-      // 从 URL 提取唯一文件名
-      const pathname = new URL(url).pathname;
-      const urlParts = pathname.split('/');
-      const rawFilename = urlParts[urlParts.length - 1];
-      const localFilename = rawFilename.includes('.') ? rawFilename : rawFilename + '.png';
-
-      const localPath = path.join(imagesDir, localFilename);
-
-      if (!fs.existsSync(localPath)) {
-        const resp = await axios.get(url, {
-          headers: buildHeaders(token),
-          responseType: 'arraybuffer',
-          timeout: 30000,
-        });
-        fs.writeFileSync(localPath, Buffer.from(resp.data));
-        downloadedCount++;
+      if (nameCount[key] > 1) {
+        if (child.type === 'TITLE') {
+          name = name + '_' + child.uuid.slice(-8);
+        } else {
+          name = name + '_' + (child.url || child.uuid.slice(-8));
+        }
       }
-
-      // 替换为相对路径
-      newBody = newBody.replaceAll(url, `./images/${localFilename}`);
-    } catch (e) {
-      log(`    ⚠ 图片下载失败 (保留原始链接): ${url} - ${(e.message || '').slice(0, 50)}`);
+      nameMap.set(child.uuid, name);
     }
   }
 
-  if (downloadedCount > 0) {
-    log(`    🖼 下载了 ${downloadedCount} 张图片到 ${path.relative(process.cwd(), imagesDir)}`);
+  return nameMap;
+}
+
+// ========== 静态资源下载（统一接口） ==========
+
+// 资源类型匹配规则
+const RESOURCE_RULES = [
+  {
+    // 图片: cdn.nlark.com/yuque/...png|jpg等
+    name: 'image',
+    regex: /https:\/\/cdn\.nlark\.com\/yuque\/[^\s)"'<>]+\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?[^\s)"'<>]*)?/gi,
+    getInfo: (match) => {
+      const url = match[0];
+      const urlObj = new URL(url);
+      const parts = urlObj.pathname.split('/');
+      return { url, filename: parts[parts.length - 1] };
+    },
+  },
+  {
+    // 附件: [filename](https://www.yuque.com/attachments/...)
+    name: 'attachment',
+    regex: /\[([^\]]*?)\]\((https:\/\/www\.yuque\.com\/attachments\/[^)]+)\)/g,
+    getInfo: (match) => ({ url: match[2], filename: match[1] }),
+  },
+];
+
+async function downloadResourcesForMd(body, mdDirPath, docName, token) {
+  const resourcesDir = path.join(mdDirPath, 'resources', docName);
+  let newBody = body;
+  const seen = new Set();
+  const replacements = [];
+  let totalDownloaded = 0;
+
+  for (const rule of RESOURCE_RULES) {
+    let match;
+    rule.regex.lastIndex = 0;
+    while ((match = rule.regex.exec(body)) !== null) {
+      const info = rule.getInfo(match);
+      if (seen.has(info.url)) continue;
+      seen.add(info.url);
+
+      const localPath = path.join(resourcesDir, info.filename);
+      const relativePath = `./resources/${docName}/${info.filename}`;
+
+      if (!fs.existsSync(localPath)) {
+        try {
+          const resp = await axios.get(info.url, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+          });
+          ensureDir(resourcesDir);
+          fs.writeFileSync(localPath, Buffer.from(resp.data));
+          totalDownloaded++;
+        } catch (e) {
+          log(`    ⚠ 资源下载失败 (保留原始链接): ${info.filename} - ${(e.message || '').slice(0, 50)}`);
+          continue;
+        }
+      }
+
+      replacements.push({ old: info.url, new: relativePath });
+    }
+  }
+
+  // 替换链接（按长度降序避免部分匹配）
+  replacements.sort((a, b) => b.old.length - a.old.length);
+  for (const { old: oldUrl, new: newUrl } of replacements) {
+    newBody = newBody.split(oldUrl).join(newUrl);
+  }
+
+  if (totalDownloaded > 0) {
+    log(`    📦 下载了 ${totalDownloaded} 个资源到 resources/${docName}/`);
   }
   return newBody;
 }
 
 // ========== 文档下载 ==========
 
-async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], downloadImages = false) {
+async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false) {
   const headers = buildHeaders(token);
   const articleUrl = docNode.url;
 
@@ -221,15 +277,15 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
   const apiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=markdown&merge_dynamic_data=false`;
 
-  // 构建输出路径
-  const dirParts = [...pathPrefix, docNode.title].map(safeName);
-  const dirPath = path.join(outputDir, ...dirParts.slice(0, -1));
-  const filePath = path.join(outputDir, ...dirParts) + '.md';
+  // 使用去重后的名称
+  const docName = nameMap ? (nameMap.get(docNode.uuid) || safeName(docNode.title)) : safeName(docNode.title);
+  const filePath = path.join(outputDir, ...pathPrefix, docName + '.md');
+  const dirPath = path.dirname(filePath);
 
   // 跳过已下载的文件
   if (fs.existsSync(filePath)) {
     const existing = fs.readFileSync(filePath, 'utf-8');
-    log(`  ✓ 跳过（已存在） "${docNode.title}"`);
+    log(`  ✓ 跳过（已存在） "${docName}"`);
     return { ok: true, cached: true, path: filePath, size: existing.length };
   }
 
@@ -258,23 +314,21 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
       }
     }
 
-    if (!body) {
-      body = '';
-    }
+    if (!body) body = '';
 
-    // 下载图片到本地
-    if (downloadImages) {
+    // 下载静态资源到本地
+    if (downloadResources && body) {
       ensureDir(dirPath);
-      body = await downloadImagesForMd(body, dirPath, token);
+      body = await downloadResourcesForMd(body, dirPath, docName, token);
     }
 
     const content = `# ${docNode.title}\n\n${body}`;
     ensureDir(dirPath);
     fs.writeFileSync(filePath, content, 'utf-8');
-    log(`  ✓ 已保存 "${docNode.title}" (${body.length} 字符)`);
+    log(`  ✓ 已保存 "${docName}" (${body.length} 字符)`);
     return { ok: true, path: filePath, size: body.length };
   } catch (e) {
-    log(`  ✗ "${docNode.title}" 下载失败: ${(e.message || '').slice(0, 100)}`);
+    log(`  ✗ "${docName}" 下载失败: ${(e.message || '').slice(0, 100)}`);
     return { ok: false, reason: e.message };
   }
 }
@@ -293,7 +347,7 @@ function collectSubtree(toc, parentUuid) {
   return result;
 }
 
-function getPathToDoc(toc, docUuid) {
+function getPathToDoc(toc, docUuid, nameMap = null) {
   const lookup = new Map();
   for (const item of toc) {
     lookup.set(item.uuid, item);
@@ -304,7 +358,9 @@ function getPathToDoc(toc, docUuid) {
   const visited = new Set();
   while (cur && !visited.has(cur.uuid)) {
     visited.add(cur.uuid);
-    parts.unshift(cur.title);
+    // 使用去重后的名称
+    const name = nameMap ? (nameMap.get(cur.uuid) || safeName(cur.title)) : safeName(cur.title);
+    parts.unshift(name);
     if (!cur.parent_uuid) break;
     cur = lookup.get(cur.parent_uuid);
   }
@@ -317,7 +373,7 @@ function getAllDocNodes(toc) {
 
 // ========== 整个知识库下载 ==========
 
-async function downloadEntireKb(kbUrl, token, outputDir, downloadImages = false) {
+async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = false) {
   const parsed = parseKbUrl(kbUrl);
   if (!parsed) {
     log('❌ 知识库 URL 格式不正确');
@@ -337,6 +393,15 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadImages = false)
 
   log(`  知识库: ${kbInfo.bookName} (ID: ${kbInfo.bookId}), 共 ${kbInfo.toc.length} 个 TOC 节点`);
 
+  // 构建同名去重映射
+  const nameMap = buildDedupMap(kbInfo.toc);
+
+  // 清理旧的输出目录
+  if (fs.existsSync(outputDir)) {
+    log(`  清理旧输出目录: ${outputDir}`);
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+
   const allDocs = getAllDocNodes(kbInfo.toc);
   log(`  文档节点: ${allDocs.length}`);
   log('');
@@ -352,18 +417,15 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadImages = false)
 
   for (let i = 0; i < allDocs.length; i++) {
     const doc = allDocs[i];
-    log(`  [${i + 1}/${allDocs.length}] ${doc.title}`);
+    const docName = nameMap.get(doc.uuid) || safeName(doc.title);
+    log(`  [${i + 1}/${allDocs.length}] ${docName}`);
 
-    const docPath = getPathToDoc(kbInfo.toc, doc.uuid);
-    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, downloadImages);
+    const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
+    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, downloadResources);
 
     if (result.ok && result.cached) skipCount++;
     else if (result.ok) successCount++;
     else failCount++;
-
-    if (i < allDocs.length - 1) {
-      await sleep(300);
-    }
   }
 
   const total = allDocs.length;
@@ -373,7 +435,7 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadImages = false)
 
 // ========== 全部知识库下载 ==========
 
-async function downloadAllKbs(token, outputDir, downloadImages = false) {
+async function downloadAllKbs(token, outputDir, downloadResources = false) {
   log('正在获取全部知识库列表...');
 
   let kbs;
@@ -409,7 +471,7 @@ async function downloadAllKbs(token, outputDir, downloadImages = false) {
     const kbOutDir = path.join(outputDir, safeName(kb.name));
 
     try {
-      const kbResult = await downloadEntireKb(kbUrl, token, kbOutDir, downloadImages);
+      const kbResult = await downloadEntireKb(kbUrl, token, kbOutDir, downloadResources);
       if (kbResult.ok) {
         grandTotal += (kbResult.total || 0);
         grandSuccess += (kbResult.successCount || 0);
@@ -421,7 +483,6 @@ async function downloadAllKbs(token, outputDir, downloadImages = false) {
     }
 
     if (ki < kbs.length - 1) {
-      await sleep(500);
       log('');
     }
   }
@@ -432,7 +493,7 @@ async function downloadAllKbs(token, outputDir, downloadImages = false) {
 
 // ========== 单篇文档下载（现有逻辑，保留兼容） ==========
 
-async function downloadSingleDoc(url, token, outputDir, withSub, downloadImages = false) {
+async function downloadSingleDoc(url, token, outputDir, withSub, downloadResources = false) {
   const parsed = parseDocUrl(url);
   if (!parsed) {
     log('❌ 文档 URL 格式不正确');
@@ -454,6 +515,9 @@ async function downloadSingleDoc(url, token, outputDir, withSub, downloadImages 
   log(`  知识库: ${kbInfo.bookName} (ID: ${kbInfo.bookId})`);
   log(`  文档总数: ${kbInfo.toc.length}`);
 
+  // 构建同名去重映射
+  const nameMap = buildDedupMap(kbInfo.toc);
+
   // 查找目标文档
   log(`\n[2/3] 查找目标文档...`);
   const targetDoc = kbInfo.toc.find(
@@ -465,8 +529,9 @@ async function downloadSingleDoc(url, token, outputDir, withSub, downloadImages 
     return;
   }
 
-  const pathToDoc = getPathToDoc(kbInfo.toc, targetDoc.uuid);
-  log(`  找到: ${[...pathToDoc, targetDoc.title].join(' > ')}`);
+  const pathToDoc = getPathToDoc(kbInfo.toc, targetDoc.uuid, nameMap);
+  const targetName = nameMap.get(targetDoc.uuid) || safeName(targetDoc.title);
+  log(`  找到: ${[...pathToDoc, targetName].join(' > ')}`);
 
   // 收集要下载的文档列表
   const docsToDownload = [targetDoc];
@@ -486,25 +551,22 @@ async function downloadSingleDoc(url, token, outputDir, withSub, downloadImages 
 
   for (let i = 0; i < docsToDownload.length; i++) {
     const doc = docsToDownload[i];
+    const docName = nameMap.get(doc.uuid) || safeName(doc.title);
     const idx = `[${i + 1}/${docsToDownload.length}]`;
-    log(`  ${idx} ${doc.title}`);
+    log(`  ${idx} ${docName}`);
 
     let docPathPrefix;
     if (withSub && i > 0) {
-      docPathPrefix = getPathToDoc(kbInfo.toc, doc.uuid);
+      docPathPrefix = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
     } else {
       docPathPrefix = pathToDoc;
     }
 
-    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPathPrefix, downloadImages);
+    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPathPrefix, nameMap, downloadResources);
 
     if (result.ok && result.cached) skipCount++;
     else if (result.ok) successCount++;
     else failCount++;
-
-    if (i < docsToDownload.length - 1) {
-      await sleep(300);
-    }
   }
 
   log(`\n  完成! 成功: ${successCount}  跳过: ${skipCount}  失败: ${failCount}`);
@@ -522,19 +584,19 @@ function showHelp() {
   node yuque_download.js <文档URL> -t <token> [--sub] 下载单篇文档
 
 选项:
-  -t, --token <token>      语雀 cookie token（必填，也可通过环境变量 YUQUE_TOKEN 传入）
-  -s, --sub                单文档模式: 同时下载所有子文档
-  -o, --output <dir>       输出目录（默认: ./yuque_output）
-  -i, --download-images    下载文档中的图片到本地（默认保持远程链接）
-  --all                    下载所有知识库
-  -h, --help               显示帮助
+  -t, --token <token>        语雀 cookie token（必填，也可通过环境变量 YUQUE_TOKEN 传入）
+  -s, --sub                  单文档模式: 同时下载所有子文档
+  -o, --output <dir>         输出目录（默认: ./yuque_output）
+  -r, --download-resources   下载文档中的静态资源到本地（图片+附件，默认保持远程链接）
+  --all                      下载所有知识库
+  -h, --help                 显示帮助
 
 示例:
   # 下载全部知识库
   node yuque_download.js --all -t "xxx"
 
-  # 下载全部知识库并下载图片
-  node yuque_download.js --all -t "xxx" -i
+  # 下载全部知识库并下载资源
+  node yuque_download.js --all -t "xxx" -r
 
   # 下载整个知识库
   node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx"
@@ -542,8 +604,8 @@ function showHelp() {
   # 下载单篇文档
   node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "xxx"
 
-  # 下载文档及其所有子文档，并将图片保存到本地
-  node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "xxx" --sub -i
+  # 下载文档及其所有子文档，并将静态资源保存到本地
+  node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "xxx" --sub -r
 
   # 指定输出目录
   node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx" -o "./my_docs"
@@ -567,7 +629,7 @@ async function main() {
   let token = process.env.YUQUE_TOKEN || '';
   let withSub = false;
   let downloadAll = false;
-  let downloadImages = false;
+  let downloadResources = false;
   let outputDir = path.resolve(__dirname, 'yuque_output');
 
   for (let i = 0; i < args.length; i++) {
@@ -580,8 +642,8 @@ async function main() {
       outputDir = path.resolve(args[++i] || outputDir);
     } else if (arg === '--all') {
       downloadAll = true;
-    } else if (arg === '-i' || arg === '--download-images') {
-      downloadImages = true;
+    } else if (arg === '-r' || arg === '--download-resources') {
+      downloadResources = true;
     } else if (!arg.startsWith('-') && !url) {
       url = arg;
     }
@@ -603,14 +665,14 @@ async function main() {
   log('  语雀文档下载工具 v3.0');
   log('═══════════════════════════════════════');
     log(`  输出目录: ${outputDir}`);
-    log(`  下载图片: ${downloadImages ? '是' : '否（默认保持远程链接）'}`);
+    log(`  下载资源: ${downloadResources ? '是' : '否（默认保持远程链接）'}`);
     log('');
 
   // 模式1: 全部知识库
   if (downloadAll) {
     log('模式: 全部知识库下载');
     log('');
-    await downloadAllKbs(token, outputDir, downloadImages);
+    await downloadAllKbs(token, outputDir, downloadResources);
     log(`\n文件保存在: ${outputDir}`);
     return;
   }
@@ -624,12 +686,12 @@ async function main() {
     log(`模式: 单文档下载${withSub ? '（含子文档）' : ''}`);
     log(`  URL: ${url}`);
     log('');
-    await downloadSingleDoc(url, token, outputDir, withSub, downloadImages);
+    await downloadSingleDoc(url, token, outputDir, withSub, downloadResources);
   } else if (isKbUrl) {
     // 模式2: 整个知识库下载
     log('模式: 整个知识库下载');
     log('');
-    await downloadEntireKb(url, token, outputDir, downloadImages);
+    await downloadEntireKb(url, token, outputDir, downloadResources);
   } else {
     console.error('❌ URL 格式不正确');
     console.error('支持格式:');

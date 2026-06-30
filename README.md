@@ -51,7 +51,7 @@ node yuque_download.js [模式] -t <token> [选项]
 | `-t, --token <token>` | 语雀 cookie token（必填，也可设置环境变量 `YUQUE_TOKEN`） |
 | `-s, --sub` | 单文档模式: 同时下载所有子文档 |
 | `-o, --output <dir>` | 输出目录（默认: `./yuque_output`） |
-| `-i, --download-images` | 下载文档中的图片到本地（默认保持远程链接） |
+| `-r, --download-resources` | 下载文档中的静态资源到本地（默认保持远程链接） |
 | `--all` | 下载全部知识库 |
 | `-h, --help` | 显示帮助 |
 
@@ -61,8 +61,8 @@ node yuque_download.js [模式] -t <token> [选项]
 # 下载全部知识库
 node yuque_download.js --all -t "你的token"
 
-# 下载全部知识库，并将图片保存到本地
-node yuque_download.js --all -t "你的token" -i
+# 下载全部知识库，并将静态资源保存到本地
+node yuque_download.js --all -t "你的token" -r
 
 # 下载整个知识库
 node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token"
@@ -70,8 +70,8 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token"
 # 只下载单篇文档
 node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "你的token"
 
-# 下载文档及其所有子文档，并将图片保存到本地
-node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "你的token" --sub -i
+# 下载文档及其所有子文档，并将静态资源保存到本地
+node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "你的token" --sub -r
 
 # 指定输出目录
 node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "./my_docs"
@@ -92,18 +92,24 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 - 按知识库原始目录结构保存文件
 - 已下载的文件自动跳过（断点续传）
 - 零配置，单文件即可运行
-- 支持下载文档中的图片到本地（`-i` 参数）
+- 支持下载文档中的静态资源到本地（`-r` 参数）
+- 自动处理同名文档/分组冲突（url/uuid 后缀去重）
 
-### 图片下载
+### 静态资源下载
 
-使用 `-i` 或 `--download-images` 参数可将文档中引用的语雀图片下载到本地：
+使用 `-r` 或 `--download-resources` 参数可将文档中引用的所有静态资源下载到本地：
 
-- **当前支持**: 图片（png、jpg、jpeg、gif、webp、svg、bmp），来源于 `cdn.nlark.com/yuque`
-- **文件组织**: 图片保存在文档同目录下的 `images/` 子目录，使用原始文件名
-- **链接替换**: 文档中的远程图片链接自动替换为 `./images/` 相对路径
-- **后续扩展**: 其他资源类型（附件、视频等）的本地化下载将在后续版本支持
+- **支持类型**: 图片（png、jpg、jpeg、gif、webp、svg、bmp，来源 `cdn.nlark.com`）+ 附件（所有格式，来源 `yuque.com/attachments`）
+- **文件组织**: 每级目录下统一使用 `resources/` 根文件夹，按文档名分子目录存放所有资源文件
+- **链接替换**: 文档中的远程链接自动替换为 `./resources/{文档名}/` 相对路径
 
-> 📌 不加 `-i` 参数时，图片链接仍保持 `cdn.nlark.com` 远程链接形式，与原文档一致。
+> 📌 不加 `-r` 参数时，所有资源链接保持语雀云端链接形式。
+
+### 同名文档/分组处理
+
+语雀允许同目录下存在同名文档或分组（内部通过 uuid 区分）。本工具自动检测并处理冲突：
+- **同名文档**: 文件名添加 `_url` 后缀（如 `资源文档_sglmlwqxwn5atqrp.md`）
+- **同名分组**: 文件夹名添加 `_uuid` 后缀（如 `分组_zCk9b7u0/`）
 
 ## License
 
