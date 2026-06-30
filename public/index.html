@@ -319,11 +319,11 @@ async function startDownload() {
             }
             const fileHandle = await curDir.getFileHandle(parts[parts.length - 1], { create: true });
             const writable = await fileHandle.createWritable();
-            await writable.write(doc.content);
+            await writable.write({ type: 'write', data: doc.content });
             await writable.close();
             log('    ✓ ' + relPath + ' (' + doc.size + ' 字符)');
           } catch (e) {
-            log('    ✗ ' + doc.docName + ': ' + e.message);
+            log('    ✗ ' + (doc.docName || doc.title || '?') + ': ' + e.message);
           }
         }
       } catch (e) { log('  ❌ ' + e.message); }
