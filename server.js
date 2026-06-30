@@ -233,6 +233,78 @@ app.post('/api/fetch-docs', async (req, res) => {
   }
 });
 
+// ========== API: 文件夹选择测试端点 ==========
+function runSelectFolder(psScript, options = {}) {
+  return new Promise((resolve) => {
+    const cp = require('child_process');
+    const child = cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+      timeout: 120000,
+      ...options,
+    });
+    let stdout = '';
+    child.stdout.on('data', d => stdout += d);
+    child.stderr.on('data', d => stdout += d);
+    child.on('close', code => {
+      const p = stdout.trim();
+      resolve({ ok: !!p, path: p || null, exitCode: code });
+    });
+  });
+}
+
+app.post('/api/test-select-folder-1', async (req, res) => {
+  // 方案1: windowsHide: true (当前方案)
+  const r = await runSelectFolder(`
+    Add-Type -AssemblyName System.Windows.Forms
+    $d = New-Object System.Windows.Forms.FolderBrowserDialog
+    $d.Description = 'test-1: windowsHide'
+    if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }
+  `, { windowsHide: true });
+  res.json({ scheme: 'windowsHide', ...r });
+});
+
+app.post('/api/test-select-folder-2', async (req, res) => {
+  // 方案2: 不加 windowsHide
+  const r = await runSelectFolder(`
+    Add-Type -AssemblyName System.Windows.Forms
+    $d = New-Object System.Windows.Forms.FolderBrowserDialog
+    $d.Description = 'test-2: no windowsHide'
+    if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }
+  `);
+  res.json({ scheme: 'no windowsHide', ...r });
+});
+
+app.post('/api/test-select-folder-3', async (req, res) => {
+  // 方案3: 用 .NET OpenFileDialog (文件夹模式) + ShowDialog(IWin32Window)
+  const r = await runSelectFolder(`
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type @'
+    using System;
+    using System.Runtime.InteropServices;
+    public class Win32 {
+      [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    }
+'@
+    $d = New-Object System.Windows.Forms.FolderBrowserDialog
+    $d.Description = 'test-3: GetForegroundWindow'
+    $owner = New-Object System.Windows.Forms.NativeWindow
+    $owner.AssignHandle([Win32]::GetForegroundWindow())
+    if ($d.ShowDialog($owner) -eq 'OK') { Write-Output $d.SelectedPath }
+  `);
+  res.json({ scheme: 'foreground window', ...r });
+});
+
+app.post('/api/test-select-folder-4', async (req, res) => {
+  // 方案4: 用 shell.application COM 对象
+  const r = await runSelectFolder(`
+    $shell = New-Object -ComObject Shell.Application
+    $folder = $shell.BrowseForFolder(0, 'test-4: Shell BrowseForFolder', 0, 0)
+    if ($folder) {
+      Write-Output $folder.Self.Path
+    }
+  `);
+  res.json({ scheme: 'Shell BrowseForFolder', ...r });
+});
+
 // ========== API: 原生文件夹选择对话框 ==========
 app.post('/api/select-folder', (req, res) => {
   const cp = require('child_process');
