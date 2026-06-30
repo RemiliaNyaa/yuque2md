@@ -275,13 +275,13 @@ function onRecursiveChange() {
 
 // ========== 统计 ==========
 function updateCount() {
-  // 只统计 DOC 类型
-  const activeCbs = document.querySelectorAll('[id="kb-' + activeBookId + '"] .cb');
+  const allCbs = document.querySelectorAll('.tree-children.expanded .cb, #treePanel > div:not(.tree-children) .cb');
   let count = 0;
-  activeCbs.forEach(c => {
-    const nodeEl = c.closest('.tree-node');
-    if (nodeEl && c.checked) count++;
-  });
+  allCbs.forEach(c => { if (c.checked) count++; });
+  // fallback: 如果上面找不到，统计所有的
+  if (count === 0) {
+    document.querySelectorAll('.tree-node .cb').forEach(c => { if (c.checked) count++; });
+  }
   document.getElementById('lblCount').textContent = '已选 ' + count + ' 篇';
   document.getElementById('btnDownload').disabled = count === 0;
 }
