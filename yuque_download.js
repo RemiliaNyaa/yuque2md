@@ -154,7 +154,7 @@ async function fetchAllKbs(token) {
 
 /**
  * 构建去重名称映射
- * TOC 中同目录下同名节点: TITLE用uuid后缀, DOC用url后缀
+ * 同目录下同名节点统一使用 uuid 后缀
  */
 function buildDedupMap(toc) {
   const nameMap = new Map(); // uuid → deduped safeName
@@ -178,11 +178,7 @@ function buildDedupMap(toc) {
       let name = safeName(child.title);
 
       if (nameCount[key] > 1) {
-        if (child.type === 'TITLE') {
-          name = name + '_' + child.uuid.slice(-8);
-        } else {
-          name = name + '_' + (child.url || child.uuid.slice(-8));
-        }
+        name = name + '_' + child.uuid.slice(-8);
       }
       nameMap.set(child.uuid, name);
     }

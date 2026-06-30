@@ -93,7 +93,7 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 - 已下载的文件自动跳过（断点续传）
 - 零配置，单文件即可运行
 - 支持下载文档中的静态资源到本地（`-r` 参数）
-- 自动处理同名文档/分组冲突（url/uuid 后缀去重）
+- 自动处理同名文档/分组冲突（uuid 后缀去重）
 
 ### 静态资源下载
 
@@ -107,9 +107,10 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 
 ### 同名文档/分组处理
 
-语雀允许同目录下存在同名文档或分组（内部通过 uuid 区分）。本工具自动检测并处理冲突：
-- **同名文档**: 文件名添加 `_url` 后缀（如 `资源文档_sglmlwqxwn5atqrp.md`）
-- **同名分组**: 文件夹名添加 `_uuid` 后缀（如 `分组_zCk9b7u0/`）
+语雀允许同目录下存在同名文档或分组（内部通过 uuid 区分）。本工具自动检测并处理冲突，统一使用 `_uuid` 后 8 位作为后缀：
+
+- **同名文档**: `资源文档_svjUKM_8.md`
+- **同名分组**: `分组_zCk9b7u0/`
 
 ## License
 
