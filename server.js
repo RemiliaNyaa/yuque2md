@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const EventEmitter = require('events');
 const {
   setLogCallback,
@@ -11,6 +12,7 @@ const {
   getAllDocNodes,
   downloadDoc,
   downloadResourcesForMd,
+  buildHeaders,
   safeName,
   ensureDir,
 } = require('./yuque_download');
