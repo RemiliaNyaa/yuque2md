@@ -122,23 +122,9 @@ async function selectDir() {
       btn.disabled = false;
     }
   } catch (e) {
-    // 后端不可用，回退到 showDirectoryPicker
-    if (window.showDirectoryPicker) {
-      try {
-        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        selectedOutputDir = '__browser__:' + handle.name;
-        btn.textContent = '📁 输出到: ' + handle.name;
-        btn.disabled = false;
-        // 存 handle 供后续浏览器写
-        window._dirHandle = handle;
-      } catch (ex) {
-        btn.textContent = '📁 输出到: yuque_output';
-        btn.disabled = false;
-      }
-    } else {
-      btn.textContent = '📁 输出到: yuque_output';
-      btn.disabled = false;
-    }
+    selectedOutputDir = '';
+    btn.textContent = '📁 输出到: yuque_output';
+    btn.disabled = false;
   }
 }
 
