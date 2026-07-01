@@ -122,7 +122,31 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 
 使用 `-r` 或 `--download-resources` 参数可将文档中引用的所有静态资源下载到本地：
 
-- **支持类型**: 图片（png、jpg、jpeg、gif、webp、svg、bmp，来源 `cdn.nlark.com`）+ 附件（所有格式，来源 `yuque.com/attachments`）+ **语雀嵌入本地文件、音频、视频**（通过 HTML 源自动提取 `data-audio-src` / `data-video-src` 并下载，文档末尾追加本地资源索引）
+**可下载到本地：**
+
+| 资源类型 | 来源 | 说明 |
+|---------|------|------|
+| 图片 (png/jpg/gif/webp/svg/bmp) | `cdn.nlark.com` | 已有规则自动下载 |
+| 附件 (所有格式) | `attachments/` | 已有规则自动下载 |
+| 嵌入本地文件 (Office/PDF/Sketch等) | `attachments/` | 同附件格式 |
+| 嵌入音频 (mp3/wav/m4a) | HTML `data-audio-src` → `attachments/` | 自动提取并替换卡片链接 |
+| 嵌入视频 (mp4/mov/avi等) | HTML `data-video-src` → `attachments/` | 自动提取并替换卡片链接 |
+| 公式 (LaTeX) | `cdn.nlark.com/yuque/__latex/xxx.svg` | 已有 SVG 规则自动下载 |
+| UML 图 / 文本绘图 | `cdn.nlark.com/yuque/__puml/xxx.svg` | 已有 SVG 规则自动下载 |
+| 画板 / 思维导图 | 导出为图片 | 已有图片规则自动下载 |
+
+**无静态资源可下载（交互式组件，仅保留链接）：**
+
+| 类型 | 原因 |
+|------|------|
+| 数据表 / 画册 / 看板 | 浏览器渲染的交互组件，无静态文件 |
+| 投票 / 打卡 | 同上 |
+| 加密文本 | 需密码，API 不返回内容 |
+| 日历 | 语雀导出格式损坏 |
+| 流程图 | 语雀导出直接空白 |
+
+**无需特殊处理：** 表格、代码块、折叠块、第三方嵌入（B站/优酷等）
+
 - **文件组织**: 每级目录下统一使用 `resources/` 根文件夹，按文档名分子目录存放所有资源文件
 - **链接替换**: 文档中的远程链接自动替换为 `./resources/{文档名}/` 相对路径
 
