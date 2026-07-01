@@ -61,7 +61,7 @@ app.post('/api/download', async (req, res) => {
     const taskId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     setLogCallback((msg) => emitLog(taskId, msg));
     emitLog(taskId, `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] 开始下载...`);
-    tasks.set(taskId, { status: 'running', startTime: Date.now() });
+    tasks.set(taskId, { status: 'running', startTime: Date.now(), cancelled: false });
 
     (async () => {
       try {
@@ -78,6 +78,7 @@ app.post('/api/download', async (req, res) => {
         const allDocs = getAllDocNodes(kbInfo.toc);
         const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));
         for (let i = 0; i < docsToDownload.length; i++) {
+          if (tasks.get(taskId)?.cancelled) { emitLog(taskId, '⏹ 已取消'); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'cancelled' }); return; }
           const doc = docsToDownload[i];
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
@@ -102,6 +103,18 @@ app.get('/api/logs/:taskId', (req, res) => {
   const listener = (msg) => { res.write(`data: ${msg}\n\n`); if (msg === '__DONE__') { res.end(); taskEmitter.removeListener(taskId, listener); } };
   taskEmitter.on(taskId, listener);
   req.on('close', () => taskEmitter.removeListener(taskId, listener));
+});
+
+// ========== 取消下载 ==========
+app.post('/api/cancel/:taskId', (req, res) => {
+  const { taskId } = req.params;
+  const task = tasks.get(taskId);
+  if (task && task.status === 'running') {
+    task.cancelled = true;
+    res.json({ ok: true });
+  } else {
+    res.json({ ok: false, error: '任务不存在或已完成' });
+  }
 });
 
 // ========== 文件夹选择 ==========

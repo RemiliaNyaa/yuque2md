@@ -52,6 +52,8 @@
   .loading-tree { padding: 4px 0; color: var(--pico-muted-color); font-size: .85em; }
   #btnConnect.loading { opacity: .6; pointer-events: none; }
   #btnConnect.done { --pico-primary: #2ecc71; pointer-events: none; }
+  #btnDownload.running { background: #c0392b; border-color: #c0392b; cursor: pointer; }
+  #btnDownload.running:hover { background: #e74c3c; }
   .kb-card input[type=checkbox] { margin: 0; }
   small.muted { color: var(--pico-muted-color); font-size: .85em; }
 </style>
@@ -284,6 +286,11 @@ function countDocs(nodes) {
 async function startDownload() {
   const downloadResources = document.getElementById('chkResources').checked;
   const btnDl = document.getElementById('btnDownload');
+  // 如果正在下载，触发停止
+  if (btnDl.classList.contains('running')) {
+    cancelDownload();
+    return;
+  }
   let totalDocs = 0;
   const selectedKbs = [];
   document.querySelectorAll('.kb-cb:checked').forEach(kbCb => {
@@ -307,7 +314,9 @@ async function startDownload() {
   if (selectedKbs.length === 0) { log('⚠ 请先选择要下载的文档或知识库'); return; }
   log('\n' + '═'.repeat(50));
   log('开始下载: ' + selectedKbs.length + ' 个知识库, ' + totalDocs + ' 篇');
-  btnDl.disabled = true; btnDl.textContent = '下载中...';
+  btnDl.classList.add('running');
+  btnDl.textContent = '⏹ 停止下载';
+  btnDl.disabled = false;
 
   for (const kbEntry of selectedKbs) {
     const { bookId, ns, slug, allUuids } = kbEntry;
@@ -322,6 +331,7 @@ async function startDownload() {
       const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await resp.json();
       if (!result.ok) throw new Error(result.error);
+      currentTaskId = result.taskId;
       const evtSource = new EventSource('/api/logs/' + result.taskId);
       await new Promise((resolve) => {
         evtSource.onmessage = (e) => { if (e.data === '__DONE__') { evtSource.close(); resolve(); return; } log(e.data); };
@@ -329,8 +339,23 @@ async function startDownload() {
       });
     } catch (e) { log('  ❌ ' + e.message); }
   }
-  btnDl.disabled = false; btnDl.textContent = '下载已选文档';
-  log('全部完成');
+  btnDl.classList.remove('running');
+  btnDl.textContent = '下载已选文档';
+  btnDl.disabled = false;
+  currentTaskId = null;
+}
+
+let currentTaskId = null;
+function cancelDownload() {
+  if (!currentTaskId) return;
+  fetch('/api/cancel/' + currentTaskId, { method: 'POST' });
+  const btnDl = document.getElementById('btnDownload');
+  btnDl.classList.remove('running');
+  btnDl.textContent = '下载已选文档';
+  btnDl.disabled = false;
+  currentTaskId = null;
+  log('⏹ 正在取消...');
+}
 }
 
 function collectAllUuids(nodes) {
