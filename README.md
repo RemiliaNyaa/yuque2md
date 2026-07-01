@@ -108,7 +108,7 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 
 使用 `-r` 或 `--download-resources` 参数可将文档中引用的所有静态资源下载到本地：
 
-- **支持类型**: 图片（png、jpg、jpeg、gif、webp、svg、bmp，来源 `cdn.nlark.com`）+ 附件（所有格式，来源 `yuque.com/attachments`）
+- **支持类型**: 图片（png、jpg、jpeg、gif、webp、svg、bmp，来源 `cdn.nlark.com`）+ 附件（所有格式，来源 `yuque.com/attachments`）+ **语雀嵌入本地文件/音频/视频**（mp3、mp4、wav、ogg 等，通过 HTML 源自动补捞隐藏链接）
 - **文件组织**: 每级目录下统一使用 `resources/` 根文件夹，按文档名分子目录存放所有资源文件
 - **链接替换**: 文档中的远程链接自动替换为 `./resources/{文档名}/` 相对路径
 

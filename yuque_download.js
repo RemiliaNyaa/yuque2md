@@ -209,19 +209,44 @@ const RESOURCE_RULES = [
     regex: /\[([^\]]*?)\]\((https:\/\/www\.yuque\.com\/attachments\/[^)]+)\)/g,
     getInfo: (match) => ({ url: match[2], filename: match[1] }),
   },
+  {
+    // HTML裸链接: https://www.yuque.com/attachments/...xxx.mp3 等（嵌入音频/视频隐藏URL）
+    name: 'raw-attachment',
+    regex: /https:\/\/www\.yuque\.com\/attachments\/[^\s<>"']+\.\w+/gi,
+    getInfo: (match) => {
+      const url = match[0];
+      // 从 URL 中提取纯净的文件名 + UUID
+      const parts = url.split('/');
+      const fullname = parts[parts.length - 1]; // UUID-filename.ext 的形式
+      return { url, filename: fullname };
+    },
+  },
 ];
 
-async function downloadResourcesForMd(body, mdDirPath, docName, token) {
+async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody = '') {
   const resourcesDir = path.join(mdDirPath, 'resources', docName);
   let newBody = body;
   const seen = new Set();
   const replacements = [];
   let totalDownloaded = 0;
 
+  // 合并 markdown 和 HTML 中的 attachment URL
+  let combinedBody = body;
+  if (htmlBody) {
+    // 从 HTML 中提取 markdown 里没有的 attachments 媒体 URL
+    const htmlUrls = htmlBody.match(/https?:\/\/www\.yuque\.com\/attachments\/[^\s<>"']+/g) || [];
+    for (const url of htmlUrls) {
+      if (!body.includes(url)) {
+        combinedBody += '\n' + url;
+      }
+    }
+    log(`    🔍 HTML 模式补充了 ${htmlUrls.length} 个潜在资源链接`);
+  }
+
   for (const rule of RESOURCE_RULES) {
     let match;
     rule.regex.lastIndex = 0;
-    while ((match = rule.regex.exec(body)) !== null) {
+    while ((match = rule.regex.exec(combinedBody)) !== null) {
       const info = rule.getInfo(match);
       if (seen.has(info.url)) continue;
       seen.add(info.url);
@@ -315,8 +340,18 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     // 下载静态资源到本地
     if (downloadResources && body) {
+      // 同时获取 HTML 版本，以提取 markdown 中隐藏的嵌入媒体 URL
+      let htmlBody = '';
+      try {
+        const htmlApiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=html`;
+        const htmlResp = await axios.get(htmlApiUrl, { headers });
+        htmlBody = htmlResp.data?.data?.body || htmlResp.data?.data?.sourcecode || '';
+        if (htmlBody) log(`    📄 获取 HTML 版本 (${htmlBody.length} 字符) 用于提取隐藏资源`);
+      } catch (e) {
+        // HTML 获取失败不影响主流程
+      }
       ensureDir(dirPath);
-      body = await downloadResourcesForMd(body, dirPath, docName, token);
+      body = await downloadResourcesForMd(body, dirPath, docName, token, htmlBody);
     }
 
     const content = `# ${docNode.title}\n\n${body}`;
