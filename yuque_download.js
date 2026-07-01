@@ -325,7 +325,7 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
 
 // ========== 文档下载 ==========
 
-async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false) {
+async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false, skipExisting = true) {
   const headers = buildHeaders(token);
   const articleUrl = docNode.url;
 
@@ -341,8 +341,8 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
   const filePath = path.join(outputDir, ...pathPrefix, docName + '.md');
   const dirPath = path.dirname(filePath);
 
-  // 跳过已下载的文件
-  if (fs.existsSync(filePath)) {
+  // 断点续传：跳过已下载的文件
+  if (skipExisting && fs.existsSync(filePath)) {
     const existing = fs.readFileSync(filePath, 'utf-8');
     log(`  ✓ 跳过（已存在） "${docName}"`);
     return { ok: true, cached: true, path: filePath, size: existing.length };
@@ -442,7 +442,7 @@ function getAllDocNodes(toc) {
 
 // ========== 整个知识库下载 ==========
 
-async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = false) {
+async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = false, skipExisting = true) {
   const parsed = parseKbUrl(kbUrl);
   if (!parsed) {
     log('❌ 知识库 URL 格式不正确');
@@ -465,13 +465,12 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = fal
   // 构建同名去重映射
   const nameMap = buildDedupMap(kbInfo.toc);
 
-  // 清理旧的输出目录（处理 Windows 文件占用）
-  if (fs.existsSync(outputDir)) {
+  // 强制模式：清理旧目录；断点模式：保留做续传
+  if (!skipExisting && fs.existsSync(outputDir)) {
     log(`  清理旧输出目录: ${outputDir}`);
     try {
       fs.rmSync(outputDir, { recursive: true, force: true });
     } catch (e) {
-      // 递归清理失败（可能被占用），尝试逐个删除
       try {
         function forceRmdir(dir) {
           if (!fs.existsSync(dir)) return;
@@ -484,9 +483,11 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = fal
         }
         forceRmdir(outputDir);
       } catch (_) {
-        log(`  ⚠ 目录被占用，将直接覆盖文件`);
+        log(`  ⚠ 部分文件被占用，将直接覆盖`);
       }
     }
+  } else if (skipExisting) {
+    log(`  📌 断点续传模式：跳过已下载文档`);
   }
 
   const allDocs = getAllDocNodes(kbInfo.toc);
@@ -508,7 +509,7 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = fal
     log(`  [${i + 1}/${allDocs.length}] ${docName}`);
 
     const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, downloadResources);
+    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, downloadResources, skipExisting);
 
     if (result.ok && result.cached) skipCount++;
     else if (result.ok) successCount++;
@@ -522,7 +523,7 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = fal
 
 // ========== 全部知识库下载 ==========
 
-async function downloadAllKbs(token, outputDir, downloadResources = false) {
+async function downloadAllKbs(token, outputDir, downloadResources = false, skipExisting = true) {
   log('正在获取全部知识库列表...');
 
   let kbs;
@@ -558,7 +559,7 @@ async function downloadAllKbs(token, outputDir, downloadResources = false) {
     const kbOutDir = path.join(outputDir, safeName(kb.name));
 
     try {
-      const kbResult = await downloadEntireKb(kbUrl, token, kbOutDir, downloadResources);
+      const kbResult = await downloadEntireKb(kbUrl, token, kbOutDir, downloadResources, skipExisting);
       if (kbResult.ok) {
         grandTotal += (kbResult.total || 0);
         grandSuccess += (kbResult.successCount || 0);
@@ -580,7 +581,7 @@ async function downloadAllKbs(token, outputDir, downloadResources = false) {
 
 // ========== 单篇文档下载（现有逻辑，保留兼容） ==========
 
-async function downloadSingleDoc(url, token, outputDir, withSub, downloadResources = false) {
+async function downloadSingleDoc(url, token, outputDir, withSub, downloadResources = false, skipExisting = true) {
   const parsed = parseDocUrl(url);
   if (!parsed) {
     log('❌ 文档 URL 格式不正确');
@@ -649,7 +650,7 @@ async function downloadSingleDoc(url, token, outputDir, withSub, downloadResourc
       docPathPrefix = pathToDoc;
     }
 
-    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPathPrefix, nameMap, downloadResources);
+    const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPathPrefix, nameMap, downloadResources, skipExisting);
 
     if (result.ok && result.cached) skipCount++;
     else if (result.ok) successCount++;
@@ -674,16 +675,20 @@ function showHelp() {
   -t, --token <token>        语雀 cookie token（必填，也可通过环境变量 YUQUE_TOKEN 传入）
   -s, --sub                  单文档模式: 同时下载所有子文档
   -o, --output <dir>         输出目录（默认: ./yuque_output）
-  -r, --download-resources   下载文档中的静态资源到本地（图片+附件，默认保持远程链接）
+  -r, --download-resources   下载文档中的静态资源到本地（图片+附件+嵌入音频视频，默认保持远程链接）
+  -f, --force                强制重新下载，不跳过已存在的文档（默认: 断点续传模式，跳过已下载）
   --all                      下载所有知识库
   -h, --help                 显示帮助
 
 示例:
-  # 下载全部知识库
+  # 下载全部知识库（断点续传模式，跳过已下载）
   node yuque_download.js --all -t "xxx"
 
   # 下载全部知识库并下载资源
   node yuque_download.js --all -t "xxx" -r
+
+  # 强制重新下载整个知识库（不跳过已下载）
+  node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx" -f
 
   # 下载整个知识库
   node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "xxx"
@@ -717,6 +722,7 @@ async function main() {
   let withSub = false;
   let downloadAll = false;
   let downloadResources = false;
+  let skipExisting = true;
   let outputDir = path.resolve(__dirname, 'yuque_output');
 
   for (let i = 0; i < args.length; i++) {
@@ -731,6 +737,8 @@ async function main() {
       downloadAll = true;
     } else if (arg === '-r' || arg === '--download-resources') {
       downloadResources = true;
+    } else if (arg === '-f' || arg === '--force') {
+      skipExisting = false;
     } else if (!arg.startsWith('-') && !url) {
       url = arg;
     }
@@ -753,13 +761,14 @@ async function main() {
   log('═══════════════════════════════════════');
     log(`  输出目录: ${outputDir}`);
     log(`  下载资源: ${downloadResources ? '是' : '否（默认保持远程链接）'}`);
+    log(`  覆盖模式: ${skipExisting ? '断点续传（跳过已下载）' : '强制重新下载'}`);
     log('');
 
   // 模式1: 全部知识库
   if (downloadAll) {
     log('模式: 全部知识库下载');
     log('');
-    await downloadAllKbs(token, outputDir, downloadResources);
+    await downloadAllKbs(token, outputDir, downloadResources, skipExisting);
     log(`\n文件保存在: ${outputDir}`);
     return;
   }
@@ -773,12 +782,12 @@ async function main() {
     log(`模式: 单文档下载${withSub ? '（含子文档）' : ''}`);
     log(`  URL: ${url}`);
     log('');
-    await downloadSingleDoc(url, token, outputDir, withSub, downloadResources);
+    await downloadSingleDoc(url, token, outputDir, withSub, downloadResources, skipExisting);
   } else if (isKbUrl) {
     // 模式2: 整个知识库下载
     log('模式: 整个知识库下载');
     log('');
-    await downloadEntireKb(url, token, outputDir, downloadResources);
+    await downloadEntireKb(url, token, outputDir, downloadResources, skipExisting);
   } else {
     console.error('❌ URL 格式不正确');
     console.error('支持格式:');

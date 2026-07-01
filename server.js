@@ -56,7 +56,7 @@ app.post('/api/toc', async (req, res) => {
 // ========== 下载 ==========
 app.post('/api/download', async (req, res) => {
   try {
-    const { token, kbUrl, uuids, downloadResources, outputDir: customDir } = req.body;
+    const { token, kbUrl, uuids, downloadResources, outputDir: customDir, skipExisting } = req.body;
     if (!token || !kbUrl || !uuids?.length) return res.status(400).json({ ok: false, error: '缺少参数' });
     const taskId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     setLogCallback((msg) => emitLog(taskId, msg));
@@ -70,8 +70,11 @@ app.post('/api/download', async (req, res) => {
         const outputDir = customDir
           ? path.join(customDir, safeName(kbInfo.bookName))
           : path.join(__dirname, 'yuque_output', safeName(kbInfo.bookName));
-        if (fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch (e) { emitLog(taskId, '目录被占用，将直接覆盖文件'); } }
-        let success = 0, fail = 0;
+        // 强制模式：清理旧目录；断点模式：保留
+        const doSkip = skipExisting !== false;
+        if (!doSkip && fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch (e) { emitLog(taskId, '目录被占用，将直接覆盖文件'); } }
+        if (doSkip) { emitLog(taskId, '📌 断点续传模式'); }
+        let success = 0, fail = 0, skip = 0;
         const allDocs = getAllDocNodes(kbInfo.toc);
         const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));
         for (let i = 0; i < docsToDownload.length; i++) {
@@ -79,7 +82,7 @@ app.post('/api/download', async (req, res) => {
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources);
+          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources, doSkip);
           if (result.ok) success++; else fail++;
         }
         emitLog(taskId, `\n完成! 成功: ${success}, 失败: ${fail}`);

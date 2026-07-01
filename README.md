@@ -61,8 +61,13 @@ node yuque_download.js [模式] -t <token> [选项]
 | `-s, --sub` | 单文档模式: 同时下载所有子文档 |
 | `-o, --output <dir>` | 输出目录（默认: `./yuque_output`） |
 | `-r, --download-resources` | 下载文档中的静态资源到本地（默认保持远程链接） |
+| `-f, --force` | 强制重新下载，不跳过已存在的文档 |
 | `--all` | 下载全部知识库 |
 | `-h, --help` | 显示帮助 |
+
+> **默认行为**: 断点续传模式，自动跳过已下载完成的文档。如需强制全部重新下载，添加 `-f` / `--force` 参数。
+> 
+> **⚠ 注意**: 如果切换了 `-r` 开关（从下载资源切到不下载，或反过来），建议使用 `-f` 强制重下，因为已下载的文档不会自动更新为带资源/不带资源的版本。
 
 ### 示例
 
@@ -81,6 +86,9 @@ node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "你的token"
 
 # 下载文档及其所有子文档，并将静态资源保存到本地
 node yuque_download.js "https://www.yuque.com/xxx/kb/doc-slug" -t "你的token" --sub -r
+
+# 强制重新下载（不跳过已存在文档）
+node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -f
 
 # 指定输出目录
 node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "./my_docs"
