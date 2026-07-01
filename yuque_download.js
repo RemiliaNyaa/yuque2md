@@ -211,6 +211,44 @@ const RESOURCE_RULES = [
   },
 ];
 
+// 修复跨行公式：从 HTML 提取 __latex SVG，替换 markdown 中的 $...$
+async function fixFormulas(body, htmlBody, resourcesDir, docName, downloadResources) {
+  if (!htmlBody) return body;
+  const latexRe = /cdn\.nlark\.com\/yuque\/__latex\/([a-f0-9]+\.svg)/g;
+  const hashes = [];
+  let lm;
+  while ((lm = latexRe.exec(htmlBody)) !== null) {
+    hashes.push(lm[1]);
+  }
+  if (hashes.length === 0) return body;
+
+  let fi = 0, fixedCount = 0;
+  const newBody = body.replace(/\$[\s\S]+?\$/g, (match) => {
+    if (!match.includes('\n')) return match;
+    if (fi >= hashes.length) return '（公式）';
+    const hash = hashes[fi++];
+    if (downloadResources) {
+      const url = 'https://cdn.nlark.com/yuque/__latex/' + hash;
+      const localPath = path.join(resourcesDir, hash);
+      if (!fs.existsSync(localPath)) {
+        axios.get(url, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } })
+          .then(r => { ensureDir(resourcesDir); fs.writeFileSync(localPath, Buffer.from(r.data)); })
+          .catch(() => {});
+      }
+      fixedCount++;
+      return '![公式](./resources/' + docName + '/' + hash + ')';
+    } else {
+      fixedCount++;
+      return '![公式](https://cdn.nlark.com/yuque/__latex/' + hash + ')';
+    }
+  });
+
+  if (fixedCount > 0) {
+    log('    📐 修复了 ' + fixedCount + ' 个公式为' + (downloadResources ? '本地 SVG' : '远程 SVG'));
+  }
+  return newBody;
+}
+
 async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody = '') {
   const resourcesDir = path.join(mdDirPath, 'resources', docName);
   let newBody = body;
@@ -317,41 +355,6 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
     newBody = newBody.split(oldUrl).join(newUrl);
   }
 
-  // 3. 修复多行公式：从 HTML 提取 __latex SVG，下载并替换 $...$ 公式
-    const latexSvgs = [];
-    const latexRe = /cdn\.nlark\.com\/yuque\/__latex\/([a-f0-9]+\.svg)/g;
-    let lm;
-    while ((lm = latexRe.exec(htmlBody)) !== null) {
-      const hash = lm[1];
-      const url = 'https://cdn.nlark.com/yuque/__latex/' + hash;
-      if (!seen.has(url)) {
-        seen.add(url);
-        const localPath = path.join(resourcesDir, hash);
-        const relativePath = './resources/' + docName + '/' + hash;
-        if (!fs.existsSync(localPath)) {
-          try {
-            const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-            ensureDir(resourcesDir);
-            fs.writeFileSync(localPath, Buffer.from(resp.data));
-            totalDownloaded++;
-          } catch (e) {
-            log('    ⚠ 公式 SVG 下载失败: ' + hash);
-          }
-        }
-        latexSvgs.push({ url, relativePath, hash });
-      }
-    }
-    if (latexSvgs.length > 0) {
-      // 将跨行 $...$ 公式替换为 SVG 图片引用
-      let fi = 0;
-      newBody = newBody.replace(/\$[\s\S]+?\$/g, (match) => {
-        if (!match.includes('\n')) return match; // 跳过单行 $...$（行内公式）
-        if (fi < latexSvgs.length) return '![公式](' + latexSvgs[fi++].relativePath + ')';
-        return '（公式）';
-      });
-      if (fi > 0) log('    📐 修复了 ' + fi + ' 个公式为 SVG 图片');
-    }
-
   if (totalDownloaded > 0) {
     log(`    📦 下载了 ${totalDownloaded} 个资源到 resources/${docName}/`);
   }
@@ -410,20 +413,29 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     if (!body) body = '';
 
-    // 下载静态资源到本地
-    if (downloadResources && body) {
-      // 同时获取 HTML 版本，以提取 markdown 中隐藏的嵌入媒体 URL
-      let htmlBody = '';
+    // 如果正文包含公式（跨行 $...$），获取 HTML 版本用于提取 __latex SVG
+    const hasFormulas = /\$[\s\S]*\n[\s\S]*\$/.test(body);
+    let htmlBody = '';
+    if (hasFormulas || downloadResources) {
       try {
         const htmlApiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=html`;
         const htmlResp = await axios.get(htmlApiUrl, { headers });
         htmlBody = htmlResp.data?.data?.body || htmlResp.data?.data?.sourcecode || '';
-        if (htmlBody) log(`    📄 获取 HTML 版本 (${htmlBody.length} 字符) 用于提取隐藏资源`);
+        if (htmlBody && downloadResources) log(`    📄 获取 HTML 版本 (${htmlBody.length} 字符) 用于提取隐藏资源`);
       } catch (e) {
         // HTML 获取失败不影响主流程
       }
+    }
+
+    // 下载静态资源到本地
+    if (downloadResources && body) {
       ensureDir(dirPath);
       body = await downloadResourcesForMd(body, dirPath, docName, token, htmlBody);
+    }
+
+    // 修复公式（无论是否下载资源，无资源模式用 CDN 链接）
+    if (hasFormulas && htmlBody) {
+      body = await fixFormulas(body, htmlBody, path.join(dirPath, 'resources', docName), docName, downloadResources);
     }
 
     const content = `# ${docNode.title}\n\n${body}`;
