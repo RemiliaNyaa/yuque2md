@@ -104,7 +104,7 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 
 打开语雀网页 → F12 → Application → Cookies → 找到 `_yuque_session`，复制它的值。
 
-![获取token](./如何获取语雀的token.png)
+![获取token](docs/images/get-token.png)
 
 > ⚠️ token 是你个人登录凭证，请勿泄露给他人。
 
