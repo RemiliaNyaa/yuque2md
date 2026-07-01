@@ -13,6 +13,9 @@ git clone https://github.com/RemiliaNyaa/yuque2md.git
 cd yuque2md
 npm install
 ```
+
+> Windows 用户可直接双击 `启动服务.bat`，首次自动安装依赖（使用淘宝镜像），之后直接启动。
+
 ## 使用方法
 
 ### 方式一：Web 图形界面（推荐）
