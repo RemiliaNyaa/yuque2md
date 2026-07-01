@@ -2,6 +2,9 @@
 chcp 65001 >nul 2>&1
 title 语雀文档下载工具
 
+:: 清除可能冲突的环境变量（如某些系统预设的 --use-system-ca）
+set NODE_OPTIONS=
+
 :: 检查 Node.js 是否安装
 where node >nul 2>&1
 if %errorlevel% neq 0 (
