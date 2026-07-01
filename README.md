@@ -131,7 +131,7 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 | 嵌入本地文件 (Office/PDF/Sketch等) | `attachments/` | 同附件格式 |
 | 嵌入音频 (mp3/wav/m4a) | HTML `data-audio-src` → `attachments/` | 自动提取并替换卡片链接 |
 | 嵌入视频 (mp4/mov/avi等) | HTML `data-video-src` → `attachments/` | 自动提取并替换卡片链接 |
-| 公式 (LaTeX) | `cdn.nlark.com/yuque/__latex/xxx.svg` | 已有 SVG 规则自动下载 |
+| 公式 (LaTeX) | `cdn.nlark.com/yuque/__latex/xxx.svg` | 自动下载 SVG 并替换原 `$...$` 代码为图片 |
 | UML 图 / 文本绘图 | `cdn.nlark.com/yuque/__puml/xxx.svg` | 已有 SVG 规则自动下载 |
 | 画板 / 思维导图 | 导出为图片 | 已有图片规则自动下载 |
 
