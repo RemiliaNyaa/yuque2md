@@ -70,7 +70,7 @@ app.post('/api/download', async (req, res) => {
         const outputDir = customDir
           ? path.join(customDir, safeName(kbInfo.bookName))
           : path.join(__dirname, 'yuque_output', safeName(kbInfo.bookName));
-        if (fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); fs.rmSync(outputDir, { recursive: true, force: true }); }
+        if (fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch (e) { emitLog(taskId, '目录被占用，将直接覆盖文件'); } }
         let success = 0, fail = 0;
         const allDocs = getAllDocNodes(kbInfo.toc);
         const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));

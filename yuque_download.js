@@ -465,10 +465,28 @@ async function downloadEntireKb(kbUrl, token, outputDir, downloadResources = fal
   // 构建同名去重映射
   const nameMap = buildDedupMap(kbInfo.toc);
 
-  // 清理旧的输出目录
+  // 清理旧的输出目录（处理 Windows 文件占用）
   if (fs.existsSync(outputDir)) {
     log(`  清理旧输出目录: ${outputDir}`);
-    fs.rmSync(outputDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    } catch (e) {
+      // 递归清理失败（可能被占用），尝试逐个删除
+      try {
+        function forceRmdir(dir) {
+          if (!fs.existsSync(dir)) return;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const p = path.join(dir, entry.name);
+            if (entry.isDirectory()) forceRmdir(p);
+            else { try { fs.unlinkSync(p); } catch (_) {} }
+          }
+          try { fs.rmdirSync(dir); } catch (_) {}
+        }
+        forceRmdir(outputDir);
+      } catch (_) {
+        log(`  ⚠ 目录被占用，将直接覆盖文件`);
+      }
+    }
   }
 
   const allDocs = getAllDocNodes(kbInfo.toc);
