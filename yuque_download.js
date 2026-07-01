@@ -317,6 +317,41 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
     newBody = newBody.split(oldUrl).join(newUrl);
   }
 
+  // 3. 修复多行公式：从 HTML 提取 __latex SVG，下载并替换 $...$ 公式
+    const latexSvgs = [];
+    const latexRe = /cdn\.nlark\.com\/yuque\/__latex\/([a-f0-9]+\.svg)/g;
+    let lm;
+    while ((lm = latexRe.exec(htmlBody)) !== null) {
+      const hash = lm[1];
+      const url = 'https://cdn.nlark.com/yuque/__latex/' + hash;
+      if (!seen.has(url)) {
+        seen.add(url);
+        const localPath = path.join(resourcesDir, hash);
+        const relativePath = './resources/' + docName + '/' + hash;
+        if (!fs.existsSync(localPath)) {
+          try {
+            const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+            ensureDir(resourcesDir);
+            fs.writeFileSync(localPath, Buffer.from(resp.data));
+            totalDownloaded++;
+          } catch (e) {
+            log('    ⚠ 公式 SVG 下载失败: ' + hash);
+          }
+        }
+        latexSvgs.push({ url, relativePath, hash });
+      }
+    }
+    if (latexSvgs.length > 0) {
+      // 将跨行 $...$ 公式替换为 SVG 图片引用
+      let fi = 0;
+      newBody = newBody.replace(/\$[\s\S]+?\$/g, (match) => {
+        if (!match.includes('\n')) return match; // 跳过单行 $...$（行内公式）
+        if (fi < latexSvgs.length) return '![公式](' + latexSvgs[fi++].relativePath + ')';
+        return '（公式）';
+      });
+      if (fi > 0) log('    📐 修复了 ' + fi + ' 个公式为 SVG 图片');
+    }
+
   if (totalDownloaded > 0) {
     log(`    📦 下载了 ${totalDownloaded} 个资源到 resources/${docName}/`);
   }
