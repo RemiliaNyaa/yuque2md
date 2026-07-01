@@ -13,13 +13,6 @@ git clone https://github.com/RemiliaNyaa/yuque2md.git
 cd yuque2md
 npm install
 ```
-
-或者直接下载 `yuque_download.js`，手动安装 axios：
-
-```bash
-npm install axios
-```
-
 ## 使用方法
 
 ### 方式一：Web 图形界面（推荐）
