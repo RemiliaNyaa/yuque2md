@@ -209,18 +209,6 @@ const RESOURCE_RULES = [
     regex: /\[([^\]]*?)\]\((https:\/\/www\.yuque\.com\/attachments\/[^)]+)\)/g,
     getInfo: (match) => ({ url: match[2], filename: match[1] }),
   },
-  {
-    // HTML裸链接: https://www.yuque.com/attachments/...xxx.mp3 等（嵌入音频/视频隐藏URL）
-    name: 'raw-attachment',
-    regex: /https:\/\/www\.yuque\.com\/attachments\/[^\s<>"']+\.\w+/gi,
-    getInfo: (match) => {
-      const url = match[0];
-      // 从 URL 中提取纯净的文件名 + UUID
-      const parts = url.split('/');
-      const fullname = parts[parts.length - 1]; // UUID-filename.ext 的形式
-      return { url, filename: fullname };
-    },
-  },
 ];
 
 async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody = '') {
@@ -230,23 +218,64 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
   const replacements = [];
   let totalDownloaded = 0;
 
-  // 合并 markdown 和 HTML 中的 attachment URL
-  let combinedBody = body;
+  // 处理语雀卡片：从 HTML 中提取 audio/video 资源 + 补全文档链接
+  const cardReplacements = [];
   if (htmlBody) {
-    // 从 HTML 中提取 markdown 里没有的 attachments 媒体 URL
-    const htmlUrls = htmlBody.match(/https?:\/\/www\.yuque\.com\/attachments\/[^\s<>"']+/g) || [];
-    for (const url of htmlUrls) {
-      if (!body.includes(url)) {
-        combinedBody += '\n' + url;
+    // 从 HTML 中提取文档基础 URL
+    const docBaseUrl = (htmlBody.match(/href="(https:\/\/www\.yuque\.com\/[^"]+)#/) || [])[1] || '';
+
+    // 1. 补全 about:blank 为真实文档链接
+    if (docBaseUrl) {
+      newBody = newBody.replace(/\[此处为语雀卡片，点击链接查看\]\(about:blank(#\w+)\)/g,
+        `[此处为语雀卡片，点击链接查看](${docBaseUrl}$1)`);
+    }
+
+    // 2. 提取 data-audio-src / data-video-src，下载资源
+    const mediaRegex = /id="(\w+)"[^>]*data-(audio|video)-src="([^"]+)"/g;
+    let m;
+    while ((m = mediaRegex.exec(htmlBody)) !== null) {
+      const anchor = m[1];
+      const mediaType = m[2];
+      const srcPath = m[3];
+      const url = `https://www.yuque.com/attachments/${srcPath}`;
+      const ext = srcPath.split('.').pop();
+      const filename = `${anchor}.${ext}`;
+
+      if (!seen.has(url)) {
+        seen.add(url);
+        const localPath = path.join(resourcesDir, filename);
+        if (!fs.existsSync(localPath)) {
+          try {
+            const resp = await axios.get(url, {
+              responseType: 'arraybuffer', timeout: 30000,
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+            });
+            ensureDir(resourcesDir);
+            fs.writeFileSync(localPath, Buffer.from(resp.data));
+            totalDownloaded++;
+          } catch (e) {
+            log(`    ⚠ ${mediaType}资源下载失败: ${filename} - ${(e.message||'').slice(0,40)}`);
+          }
+        }
+        const relativePath = `./resources/${docName}/${filename}`;
+        cardReplacements.push({ label: `${mediaType}: ${filename}`, path: relativePath, anchor: '#' + anchor });
       }
     }
-    log(`    🔍 HTML 模式补充了 ${htmlUrls.length} 个潜在资源链接`);
   }
+
+  // 在 markdown body 末尾追加本地嵌入资源引用
+  if (cardReplacements.length > 0) {
+    newBody += '\n\n---\n\n### 📁 本地嵌入资源\n\n';
+    for (const cr of cardReplacements) {
+      newBody += `- [${cr.label}](${cr.path})\n`;
+    }
+  }
+
 
   for (const rule of RESOURCE_RULES) {
     let match;
     rule.regex.lastIndex = 0;
-    while ((match = rule.regex.exec(combinedBody)) !== null) {
+    while ((match = rule.regex.exec(body)) !== null) {
       const info = rule.getInfo(match);
       if (seen.has(info.url)) continue;
       seen.add(info.url);
