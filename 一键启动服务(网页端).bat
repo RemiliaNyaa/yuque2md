@@ -1,47 +1,45 @@
 @echo off
-chcp 65001 >nul 2>&1
-title 语雀文档下载工具
-
-:: 清除可能冲突的环境变量（如某些系统预设的 --use-system-ca）
+setlocal enabledelayedexpansion
 set NODE_OPTIONS=
+title yuque2md
 
-:: 检查 Node.js 是否安装
+:: Check Node.js
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ 未检测到 Node.js，请先安装: https://nodejs.org/
+    echo [ERROR] Node.js not found. Install from: https://nodejs.org/
     pause
     exit /b 1
 )
 
-:: 首次运行：安装依赖
+:: First run: install dependencies via taobao mirror
 if not exist "node_modules\" (
-    echo [1/3] 首次运行，正在安装依赖（淘宝镜像）...
+    echo [1/3] First run - installing dependencies...
     call npm install --registry=https://registry.npmmirror.com
-    if %errorlevel% neq 0 (
-        echo ❌ 依赖安装失败，请检查网络后重试
+    if !errorlevel! neq 0 (
+        echo [ERROR] npm install failed. Check network and retry.
         pause
         exit /b 1
     )
-    echo ✅ 依赖安装完成
+    echo Done.
     echo.
 ) else (
-    echo 📦 依赖已安装，跳过
+    echo Dependencies already installed.
     echo.
 )
 
-:: 杀掉占用 3456 端口的进程
-echo [2/3] 清理 3456 端口...
+:: Kill process on port 3456
+echo [2/3] Cleaning port 3456...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3456" ^| findstr "LISTENING" 2^>nul') do (
     taskkill /f /pid %%a >nul 2>&1
 )
-echo   端口已就绪
+echo Port ready.
 echo.
 
-:: 启动服务并打开浏览器
-echo [3/3] 启动服务...
+:: Launch server and browser
+echo [3/3] Starting server...
 start "" http://localhost:3456
-echo   浏览器已打开，若未自动弹出请手动访问 http://localhost:3456
-echo   关闭此窗口将停止服务
+echo Browser opened. If not, visit http://localhost:3456
+echo Close this window to stop the server.
 echo.
 node server.js
 pause
