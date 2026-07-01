@@ -230,7 +230,7 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
         `[此处为语雀卡片，点击链接查看](${docBaseUrl}$1)`);
     }
 
-    // 2. 提取 data-audio-src / data-video-src，下载资源
+    // 2. 提取 data-audio-src / data-video-src，下载资源并直接替换卡片链接
     const mediaRegex = /id="(\w+)"[^>]*data-(audio|video)-src="([^"]+)"/g;
     let m;
     while ((m = mediaRegex.exec(htmlBody)) !== null) {
@@ -244,7 +244,8 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
       if (!seen.has(url)) {
         seen.add(url);
         const localPath = path.join(resourcesDir, filename);
-        if (!fs.existsSync(localPath)) {
+        let downloaded = fs.existsSync(localPath);
+        if (!downloaded) {
           try {
             const resp = await axios.get(url, {
               responseType: 'arraybuffer', timeout: 30000,
@@ -252,23 +253,30 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
             });
             ensureDir(resourcesDir);
             fs.writeFileSync(localPath, Buffer.from(resp.data));
+            downloaded = true;
             totalDownloaded++;
           } catch (e) {
             log(`    ⚠ ${mediaType}资源下载失败: ${filename} - ${(e.message||'').slice(0,40)}`);
           }
         }
-        const relativePath = `./resources/${docName}/${filename}`;
-        cardReplacements.push({ label: `${mediaType}: ${filename}`, path: relativePath, anchor: '#' + anchor });
+        if (downloaded) {
+          const relativePath = `./resources/${docName}/${filename}`;
+          // 直接替换 markdown 中的卡片链接
+          const emoji = mediaType === 'audio' ? '🎵' : '🎬';
+          newBody = newBody.replace(
+            new RegExp(`\\[此处为语雀卡片，点击链接查看\\]\\([^)]+#${anchor}\\)`, 'g'),
+            `[${emoji} ${mediaType}: ${filename}](${relativePath})`
+          );
+          cardReplacements.push({ label: `${mediaType}: ${filename}`, path: relativePath, anchor: '#' + anchor });
+        }
       }
     }
   }
 
-  // 在 markdown body 末尾追加本地嵌入资源引用
+  // 未下载的卡片：做提醒标注
   if (cardReplacements.length > 0) {
-    newBody += '\n\n---\n\n### 📁 本地嵌入资源\n\n';
-    for (const cr of cardReplacements) {
-      newBody += `- [${cr.label}](${cr.path})\n`;
-    }
+    // 卡片已经在上面的循环中直接替换了，这里记录日志
+    log(`    🎬 下载了 ${cardReplacements.length} 个嵌入音频/视频`);
   }
 
 
