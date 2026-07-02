@@ -156,7 +156,7 @@ node yuque_download.js "https://www.yuque.com/xxx/kb-slug" -t "你的token" -o "
 |---------|:--:|---------|:--:|------|
 | 文档 | 📄 | `.md` | ✅ | API 原生 markdown 导出 |
 | 分组 | 📁 | 文件夹 | ✅ | 按目录结构创建文件夹 |
-| 链接 | 🔗 | `.txt` | ✅ | TOC 直接提供链接地址 |
+| 链接 | 🔗 | `.html` | ✅ | 自动跳转页面，双击打开 |
 | 表格 | 📄 | `.json` | ⚠️ | lakesheet 格式转 xlsx 效果不佳，待研究 |
 | 数据表 | 📄 | `.json` | ⚠️ | API 不返回记录行数据，待研究 |
 | 画板 | 📄 | `.json` | ⚠️ | 保存 lakeboard 绘图数据，待研究 |

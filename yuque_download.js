@@ -478,14 +478,15 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
   const nodeType = fetchNodeType || docNode.type || 'DOC';
   const docName = nameMap ? (nameMap.get(docNode.uuid) || safeName(docNode.title)) : safeName(docNode.title);
 
-  // 链接 (LINK): 直接保存 URL 为 txt
+  // 链接 (LINK): 保存为自动跳转的 HTML 页面
   if (nodeType === 'LINK') {
-    const linkPath = path.join(outputDir, ...pathPrefix, docName + '.txt');
+    const linkPath = path.join(outputDir, ...pathPrefix, docName + '.html');
     if (skipExisting && fs.existsSync(linkPath)) { log(`  ✓ 跳过（已存在） "${docName}"`); return { ok: true, cached: true, path: linkPath }; }
     ensureDir(path.dirname(linkPath));
-    fs.writeFileSync(linkPath, articleUrl, 'utf-8');
+    const html = '<!DOCTYPE html>\n<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=' + articleUrl + '"><title>' + docName + '</title></head><body><p>正在跳转到 <a href="' + articleUrl + '">' + docName + '</a>...</p></body></html>';
+    fs.writeFileSync(linkPath, html, 'utf-8');
     log(`  ✓ 已保存 "${docName}" (链接)`);
-    return { ok: true, path: linkPath, size: articleUrl.length };
+    return { ok: true, path: linkPath, size: html.length };
   }
 
   const apiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=markdown&merge_dynamic_data=false`;
