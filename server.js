@@ -96,19 +96,21 @@ app.post('/api/public-download', async (req, res) => {
         const doSkip = skipExisting !== false;
         if (!doSkip && fs.existsSync(outputDir)) { emitLog(taskId, '清理旧输出目录...'); try { fs.rmSync(outputDir, { recursive: true, force: true }); } catch (e) { emitLog(taskId, '目录被占用，将直接覆盖文件'); } }
         if (doSkip) { emitLog(taskId, '📌 断点续传模式'); }
-        let success = 0, fail = 0;
+        let success = 0, fail = 0, skip = 0;
         const allDocs = getAllDocNodes(kbInfo.toc);
         const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));
+        emitLog(taskId, `共计 ${docsToDownload.length} 篇文档`);
         for (let i = 0; i < docsToDownload.length; i++) {
-          if (tasks.get(taskId)?.cancelled) { emitLog(taskId, '⏹ 已取消'); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'cancelled' }); return; }
+          if (tasks.get(taskId)?.cancelled) { emitLog(taskId, '⏹ 已手动停止'); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'cancelled' }); return; }
           const doc = docsToDownload[i];
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
           const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, '', outputDir, docPath, nameMap, !!downloadResources, doSkip, doc.type);
-          if (result.ok) success++; else fail++;
+          if (result.ok) { if (result.cached) skip++; else success++; } else fail++;
         }
-        emitLog(taskId, `\n完成! 成功: ${success}, 失败: ${fail}`);
+        emitLog(taskId, `\n━━━━ 下载完成 ━━━━`);
+        emitLog(taskId, `  成功: ${success}  跳过: ${skip}  失败: ${fail}  合计: ${docsToDownload.length}`);
         emitLog(taskId, `文件保存在: ${outputDir}`);
         emitLog(taskId, '__DONE__');
         tasks.set(taskId, { status: 'done', outputDir });
@@ -142,16 +144,18 @@ app.post('/api/download', async (req, res) => {
         let success = 0, fail = 0, skip = 0;
         const allDocs = getAllDocNodes(kbInfo.toc);
         const docsToDownload = allDocs.filter(doc => uuids.includes(doc.uuid));
+        emitLog(taskId, `共计 ${docsToDownload.length} 篇文档`);
         for (let i = 0; i < docsToDownload.length; i++) {
-          if (tasks.get(taskId)?.cancelled) { emitLog(taskId, '⏹ 已取消'); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'cancelled' }); return; }
+          if (tasks.get(taskId)?.cancelled) { emitLog(taskId, '⏹ 已手动停止'); emitLog(taskId, '__DONE__'); tasks.set(taskId, { status: 'cancelled' }); return; }
           const doc = docsToDownload[i];
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
           const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources, doSkip);
-          if (result.ok) success++; else fail++;
+          if (result.ok) { if (result.cached) skip++; else success++; } else fail++;
         }
-        emitLog(taskId, `\n完成! 成功: ${success}, 失败: ${fail}`);
+        emitLog(taskId, `\n━━━━ 下载完成 ━━━━`);
+        emitLog(taskId, `  成功: ${success}  跳过: ${skip}  失败: ${fail}  合计: ${docsToDownload.length}`);
         emitLog(taskId, `文件保存在: ${outputDir}`);
         emitLog(taskId, '__DONE__');
         tasks.set(taskId, { status: 'done', outputDir });
