@@ -413,15 +413,16 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     if (!body) body = '';
 
-    // 如果正文包含公式（跨行 $...$），获取 HTML 版本用于提取 __latex SVG
-    const hasFormulas = /\$[\s\S]*\n[\s\S]*\$/.test(body);
+    // 如果正文包含公式（跨行 $...$）或需要解析隐藏卡片链接，获取 HTML 版本
     let htmlBody = '';
-    if (hasFormulas || downloadResources) {
+    const hasFormulas = /\$[\s\S]*\n[\s\S]*\$/.test(body);
+    const hasCardLinks = downloadResources && body.includes('about:blank#');
+    if (hasFormulas || hasCardLinks) {
       try {
         const htmlApiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=html`;
         const htmlResp = await axios.get(htmlApiUrl, { headers });
         htmlBody = htmlResp.data?.data?.body || htmlResp.data?.data?.sourcecode || '';
-        if (htmlBody && downloadResources) log(`    📄 获取 HTML 版本 (${htmlBody.length} 字符) 用于提取隐藏资源`);
+        if (htmlBody) log(`    📄 获取 HTML 版本 (${htmlBody.length} 字符) 用于提取隐藏资源`);
       } catch (e) {
         // HTML 获取失败不影响主流程
       }
