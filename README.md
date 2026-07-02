@@ -40,7 +40,9 @@ npm run start:web
 
 > 💡 **两种连接方式**：左上角下拉框切换「🔑 私有知识库」(需 Token) 和「🌐 公开文档」(直接贴 URL)。公开模式无需登录，可浏览和下载任何有权限访问的语雀公开文档。
 
-![GUI界面](docs/images/gui-overview.png)
+![私有知识库模式](docs/images/gui-overview-1.png)
+
+![公开文档模式](docs/images/gui-overview-2.png)
 
 > 点击知识库旁的 ▶ 按钮即可加载文档树，勾选需要的文档后点击「下载已选文档」。
 
