@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const axios = require('axios');
 
 // ========== 工具函数 ==========
@@ -385,9 +386,87 @@ async function downloadResourcesForMd(body, mdDirPath, docName, token, htmlBody 
   return newBody;
 }
 
+// ========== 特殊文档类型导出 ==========
+
+function lakeSheetToXlsx(body) {
+  const XLSX = require('xlsx');
+  try {
+    const parsed = JSON.parse(body);
+    const compressed = parsed.sheet || '';
+    if (!compressed) return null;
+    const decompressed = zlib.inflateSync(Buffer.from(compressed, 'binary'));
+    const sheets = JSON.parse(decompressed.toString('utf-8'));
+
+    const wb = XLSX.utils.book_new();
+    for (const sh of sheets) {
+      const data = sh.data || {};
+      const keys = Object.keys(data).map(Number).sort((a, b) => a - b);
+      const maxRow = keys.length > 0 ? keys[keys.length - 1] : 0;
+      let maxCol = 0;
+      Object.keys(data).forEach(r => { if (data[r]) Object.keys(data[r]).forEach(c => { maxCol = Math.max(maxCol, parseInt(c)); }); });
+
+      const rows = [];
+      for (let r = 0; r <= maxRow; r++) {
+        const srcRow = data[r] || {};
+        const arr = [];
+        for (let c = 0; c <= maxCol; c++) {
+          const cell = srcRow[c];
+          arr.push((cell && typeof cell === 'object') ? (cell.v != null ? cell.v : '') : (cell != null ? String(cell) : ''));
+        }
+        rows.push(arr);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      if (sh.mergeCells) {
+        ws['!merges'] = Object.values(sh.mergeCells).map(m => ({
+          s: { r: m.row, c: m.col },
+          e: { r: m.row + m.rowCount - 1, c: m.col + m.colCount - 1 }
+        }));
+      }
+      XLSX.utils.book_append_sheet(wb, ws, sh.name || 'Sheet1');
+    }
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  } catch (e) {
+    log('    ⚠ lakesheet→xlsx 失败: ' + e.message);
+    return null;
+  }
+}
+
+function lakeTableToXlsx(body) {
+  const XLSX = require('xlsx');
+  try {
+    const parsed = JSON.parse(body);
+    const records = parsed.records;
+    const sheetObj = parsed.sheet;
+    
+    if (records && records.length > 0 && sheetObj) {
+      const metaKey = Object.keys(sheetObj)[0];
+      const meta = sheetObj[metaKey];
+      const columns = meta.columns || [];
+      const headers = columns.map(c => c.name);
+      const rows = [headers];
+      for (const rec of records) {
+        const recData = typeof rec.data === 'string' ? JSON.parse(rec.data) : (rec.data || {});
+        const row = columns.map(c => {
+          const cell = recData[c.id || c.key];
+          return (cell && typeof cell === 'object') ? (cell.value ?? cell.text ?? '') : (cell != null ? String(cell) : '');
+        });
+        rows.push(row);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    }
+    return null;
+  } catch (e) {
+    log('    ⚠ laketable→xlsx 失败: ' + e.message);
+    return null;
+  }
+}
+
 // ========== 文档下载 ==========
 
-async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false, skipExisting = true) {
+async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false, skipExisting = true, fetchNodeType = null) {
   const headers = buildHeaders(token);
   const articleUrl = docNode.url;
 
@@ -396,10 +475,21 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
     return { ok: false, reason: 'no_url' };
   }
 
+  const nodeType = fetchNodeType || docNode.type || 'DOC';
+  const docName = nameMap ? (nameMap.get(docNode.uuid) || safeName(docNode.title)) : safeName(docNode.title);
+
+  // 链接 (LINK): 直接保存 URL 为 txt
+  if (nodeType === 'LINK') {
+    const linkPath = path.join(outputDir, ...pathPrefix, docName + '.txt');
+    if (skipExisting && fs.existsSync(linkPath)) { log(`  ✓ 跳过（已存在） "${docName}"`); return { ok: true, cached: true, path: linkPath }; }
+    ensureDir(path.dirname(linkPath));
+    fs.writeFileSync(linkPath, articleUrl, 'utf-8');
+    log(`  ✓ 已保存 "${docName}" (链接)`);
+    return { ok: true, path: linkPath, size: articleUrl.length };
+  }
+
   const apiUrl = `${host}/api/docs/${articleUrl}?book_id=${String(bookId)}&mode=markdown&merge_dynamic_data=false`;
 
-  // 使用去重后的名称
-  const docName = nameMap ? (nameMap.get(docNode.uuid) || safeName(docNode.title)) : safeName(docNode.title);
   const filePath = path.join(outputDir, ...pathPrefix, docName + '.md');
   const dirPath = path.dirname(filePath);
 
@@ -413,6 +503,7 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
   try {
     const resp = await axios.get(apiUrl, { headers });
     const docData = resp.data;
+    const docType = docData?.data?.type;
 
     let body = '';
     if (docData && docData.data && docData.data.sourcecode) {
@@ -437,6 +528,43 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     if (!body) body = '';
 
+    // 特殊文档类型处理
+    if (docType === 'Sheet' && body) {
+      const xlsxBuf = lakeSheetToXlsx(body);
+      if (xlsxBuf) {
+        const xlsxPath = filePath.replace(/\.md$/, '.xlsx');
+        ensureDir(dirPath);
+        fs.writeFileSync(xlsxPath, xlsxBuf);
+        log(`  ✓ 已保存 "${docName}" (表格→xlsx, ${xlsxBuf.length} 字节)`);
+        return { ok: true, path: xlsxPath, size: xlsxBuf.length };
+      }
+    }
+    if (docType === 'Table' && body) {
+      const xlsxBuf = lakeTableToXlsx(body);
+      if (xlsxBuf) {
+        const xlsxPath = filePath.replace(/\.md$/, '.xlsx');
+        ensureDir(dirPath);
+        fs.writeFileSync(xlsxPath, xlsxBuf);
+        log(`  ✓ 已保存 "${docName}" (数据表→xlsx, ${xlsxBuf.length} 字节)`);
+        return { ok: true, path: xlsxPath, size: xlsxBuf.length };
+      }
+      // 回退：保存 JSON
+      const jsonPath = filePath.replace(/\.md$/, '.json');
+      ensureDir(dirPath);
+      const pretty = JSON.stringify(JSON.parse(body), null, 2);
+      fs.writeFileSync(jsonPath, pretty, 'utf-8');
+      log(`  ✓ 已保存 "${docName}" (数据表→json)`);
+      return { ok: true, path: jsonPath, size: pretty.length };
+    }
+    if (docType === 'Board') {
+      const jsonPath = filePath.replace(/\.md$/, '.json');
+      ensureDir(dirPath);
+      fs.writeFileSync(jsonPath, body || '', 'utf-8');
+      log(`  ✓ 已保存 "${docName}" (画板→json)`);
+      return { ok: true, path: jsonPath, size: (body || '').length };
+    }
+
+    // 普通 Doc 文档：以下为 markdown 处理流程
     // 如果正文包含公式（跨行 $...$）或需要解析隐藏卡片链接，获取 HTML 版本
     let htmlBody = '';
     const hasFormulas = /\$[\s\S]*\n[\s\S]*\$/.test(body);
@@ -479,8 +607,9 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 function collectSubtree(toc, parentUuid) {
   const result = [];
   const children = toc.filter(item => item.parent_uuid === parentUuid);
+  const downloadTypes = ['DOC', 'LINK'];
   for (const child of children) {
-    if (child.type === 'DOC') {
+    if (downloadTypes.includes(child.type)) {
       result.push(child);
     }
     result.push(...collectSubtree(toc, child.uuid));
@@ -509,7 +638,8 @@ function getPathToDoc(toc, docUuid, nameMap = null) {
 }
 
 function getAllDocNodes(toc) {
-  return toc.filter(item => item.type === 'DOC');
+  const downloadTypes = ['DOC', 'LINK'];
+  return toc.filter(item => downloadTypes.includes(item.type));
 }
 
 // ========== 整个知识库下载 ==========

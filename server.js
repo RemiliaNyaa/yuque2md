@@ -105,7 +105,7 @@ app.post('/api/public-download', async (req, res) => {
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, '', outputDir, docPath, nameMap, !!downloadResources, doSkip);
+          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, '', outputDir, docPath, nameMap, !!downloadResources, doSkip, doc.type);
           if (result.ok) success++; else fail++;
         }
         emitLog(taskId, `\n完成! 成功: ${success}, 失败: ${fail}`);
