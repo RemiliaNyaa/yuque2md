@@ -334,7 +334,7 @@ function updateCount() {
 
 function countDocs(nodes) {
   let n = 0;
-  for (const node of nodes) { if (node.type === 'DOC') n++; if (node.children) n += countDocs(node.children); }
+  for (const node of nodes) { if (node.type === 'DOC' || node.type === 'LINK') n++; if (node.children) n += countDocs(node.children); }
   return n;
 }
 
@@ -417,7 +417,7 @@ function cancelDownload() {
 
 function collectAllUuids(nodes) {
   let uuids = [];
-  for (const node of nodes) { if (node.type === 'DOC') uuids.push(node.uuid); if (node.children) uuids = uuids.concat(collectAllUuids(node.children)); }
+  for (const node of nodes) { if (node.type === 'DOC' || node.type === 'LINK') uuids.push(node.uuid); if (node.children) uuids = uuids.concat(collectAllUuids(node.children)); }
   return uuids;
 }
 
