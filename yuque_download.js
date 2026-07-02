@@ -466,7 +466,7 @@ function lakeTableToXlsx(body) {
 
 // ========== 文档下载 ==========
 
-async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false, skipExisting = true, fetchNodeType = null) {
+async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix = [], nameMap = null, downloadResources = false, skipExisting = true, fetchNodeType = null, kbUrlBase = '') {
   const headers = buildHeaders(token);
   const articleUrl = docNode.url;
 
@@ -529,37 +529,15 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     if (!body) body = '';
 
-    // 特殊文档类型处理
-    if (docType === 'Sheet' && body) {
-      const jsonPath = filePath.replace(/\.md$/, '.json');
+    // 特殊文档类型处理：生成 HTML 跳转页面
+    if ((docType === 'Sheet' || docType === 'Table' || docType === 'Board') && kbUrlBase) {
+      const viewUrl = kbUrlBase.replace(/\/$/, '') + '/' + articleUrl;
+      const linkPath = filePath.replace(/\.md$/, '.html');
       ensureDir(dirPath);
-      fs.writeFileSync(jsonPath, body, 'utf-8');
-      log(`  ✓ 已保存 "${docName}" (表格→json)`);
-      return { ok: true, path: jsonPath, size: body.length };
-    }
-    if (docType === 'Table' && body) {
-      const xlsxBuf = lakeTableToXlsx(body);
-      if (xlsxBuf) {
-        const xlsxPath = filePath.replace(/\.md$/, '.xlsx');
-        ensureDir(dirPath);
-        fs.writeFileSync(xlsxPath, xlsxBuf);
-        log(`  ✓ 已保存 "${docName}" (数据表→xlsx, ${xlsxBuf.length} 字节)`);
-        return { ok: true, path: xlsxPath, size: xlsxBuf.length };
-      }
-      // 回退：保存 JSON
-      const jsonPath = filePath.replace(/\.md$/, '.json');
-      ensureDir(dirPath);
-      const pretty = JSON.stringify(JSON.parse(body), null, 2);
-      fs.writeFileSync(jsonPath, pretty, 'utf-8');
-      log(`  ✓ 已保存 "${docName}" (数据表→json)`);
-      return { ok: true, path: jsonPath, size: pretty.length };
-    }
-    if (docType === 'Board') {
-      const jsonPath = filePath.replace(/\.md$/, '.json');
-      ensureDir(dirPath);
-      fs.writeFileSync(jsonPath, body || '', 'utf-8');
-      log(`  ✓ 已保存 "${docName}" (画板→json)`);
-      return { ok: true, path: jsonPath, size: (body || '').length };
+      const html = '<!DOCTYPE html>\n<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=' + viewUrl + '"><title>' + docName + '</title></head><body><p>正在跳转到 <a href="' + viewUrl + '">' + docName + '</a>...</p></body></html>';
+      fs.writeFileSync(linkPath, html, 'utf-8');
+      log(`  ✓ 已保存 "${docName}" (${docType === 'Sheet' ? '表格' : docType === 'Table' ? '数据表' : '画板'}→html 跳转)`);
+      return { ok: true, path: linkPath, size: html.length };
     }
 
     // 普通 Doc 文档：以下为 markdown 处理流程

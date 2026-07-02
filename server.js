@@ -106,7 +106,7 @@ app.post('/api/public-download', async (req, res) => {
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, '', outputDir, docPath, nameMap, !!downloadResources, doSkip, doc.type);
+          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, '', outputDir, docPath, nameMap, !!downloadResources, doSkip, doc.type, docUrl.replace(/\/[^\/]+$/, ''));
           if (result.ok) { if (result.cached) skip++; else success++; } else fail++;
         }
         emitLog(taskId, `\n━━━━ 下载完成 ━━━━`);
@@ -151,7 +151,7 @@ app.post('/api/download', async (req, res) => {
           const docName = nameMap.get(doc.uuid) || safeName(doc.title);
           emitLog(taskId, `[${i + 1}/${docsToDownload.length}] ${docName}`);
           const docPath = getPathToDoc(kbInfo.toc, doc.uuid, nameMap);
-          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources, doSkip);
+          const result = await downloadDoc(doc, kbInfo.bookId, kbInfo.host, token, outputDir, docPath, nameMap, !!downloadResources, doSkip, doc.type, kbUrl);
           if (result.ok) { if (result.cached) skip++; else success++; } else fail++;
         }
         emitLog(taskId, `\n━━━━ 下载完成 ━━━━`);
