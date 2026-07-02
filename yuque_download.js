@@ -88,6 +88,30 @@ async function fetchKbInfo(kbUrl, token) {
   };
 }
 
+// ========== 获取公开文档信息（无需 token）==========
+
+async function fetchPublicKbInfo(docOrKbUrl) {
+  const url = docOrKbUrl.endsWith('/') ? docOrKbUrl.slice(0, -1) : docOrKbUrl;
+  const h = { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' };
+  const resp = await axios.get(url, { headers: h });
+  const html = resp.data;
+
+  const m = html.match(/window\.appData\s*=\s*JSON\.parse\(decodeURIComponent\("([^"]+)"\)\)/);
+  if (!m) throw new Error('页面中未找到公开数据，该文档可能非公开');
+
+  const decoded = decodeURIComponent(m[1]);
+  const json = JSON.parse(decoded);
+
+  const host = url.match(/^(https?:\/\/[^\/]+)/)[1];
+
+  return {
+    bookId: json.book.id,
+    bookName: json.book.name || '',
+    host: host || 'https://www.yuque.com',
+    toc: json.book.toc || [],
+  };
+}
+
 // ========== 获取用户所有知识库列表 ==========
 
 async function fetchAllKbs(token) {
@@ -866,6 +890,7 @@ module.exports = {
   downloadResourcesForMd,
   fetchAllKbs,
   fetchKbInfo,
+  fetchPublicKbInfo,
   buildDedupMap,
   getPathToDoc,
   getAllDocNodes,

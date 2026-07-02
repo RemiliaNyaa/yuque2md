@@ -61,7 +61,12 @@
 <body>
 <header class="container-fluid">
   <h1>yuque2md</h1>
+  <select id="mode" onchange="toggleMode()" style="width:auto;margin-right:4px">
+    <option value="private">🔑 私有知识库</option>
+    <option value="public">🌐 公开文档</option>
+  </select>
   <input id="token" type="password" placeholder="粘贴语雀 _yuque_session token">
+  <input id="publicUrl" type="text" placeholder="粘贴公开文档 URL（如 https://www.yuque.com/yuque/ng1qth/member-privilege）" style="display:none">
   <button id="btnConnect" onclick="connect()">连接</button>
 </header>
 <div class="main">
@@ -84,16 +89,47 @@ let token = '';
 let kbs = [];
 let kbsData = {};
 let activeBookId = null;
-let selectedOutputDir = '';  // 用户自定义输出目录（空=默认 yuque_output）
+let selectedOutputDir = '';
+let publicKbUrl = '';
+let kbInfo = null;
+
+function toggleMode() {
+  const mode = document.getElementById('mode').value;
+  document.getElementById('token').style.display = mode === 'private' ? '' : 'none';
+  document.getElementById('publicUrl').style.display = mode === 'public' ? '' : 'none';
+  document.getElementById('treePanel').innerHTML = '<div class="placeholder">' +
+    (mode === 'private' ? '👆 输入 Token 连接语雀账号' : '👆 粘贴公开文档 URL 后点击连接') + '</div>';
+}
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function log(msg) { const p = document.getElementById('logPanel'); p.textContent += msg + '\n'; p.scrollTop = p.scrollHeight; }
 
 async function connect() {
-  token = document.getElementById('token').value.trim();
-  if (!token) return alert('请输入 Token');
+  const mode = document.getElementById('mode').value;
   const btn = document.getElementById('btnConnect');
   btn.textContent = '连接中...'; btn.classList.add('loading');
+
+  if (mode === 'public') {
+    const url = document.getElementById('publicUrl').value.trim();
+    if (!url) { alert('请输入公开文档 URL'); btn.textContent = '连接'; btn.classList.remove('loading'); return; }
+    try {
+      const resp = await fetch('/api/public-toc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error);
+      kbInfo = data.kb; kbsData['_public_'] = data; publicKbUrl = url;
+      btn.textContent = '已连接 ✓'; btn.classList.add('done');
+      log('✅ 公开知识库: ' + kbInfo.bookName);
+      renderPublicTree(data.tree, kbInfo.bookName, kbInfo.bookId);
+    } catch (e) {
+      btn.textContent = '重试'; btn.classList.remove('loading');
+      log('❌ 连接失败: ' + e.message);
+    }
+    return;
+  }
+
+  // 私有模式
+  token = document.getElementById('token').value.trim();
+  if (!token) return alert('请输入 Token');
   try {
     const resp = await fetch('/api/kbs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
     const data = await resp.json();
@@ -167,6 +203,25 @@ async function toggleKbSelect(bookId) {
   if (container && !container.querySelector('.cb')) container.innerHTML = renderTree(kbsData[bookId].tree, bookId);
   const checked = kbCb.checked;
   if (container) container.querySelectorAll('.cb').forEach(c => { c.checked = checked; });
+  updateCount();
+}
+
+// 公开模式：直接渲染文档树
+function renderPublicTree(tree, bookName, bookId) {
+  let html = '<div class="kb-card public">';
+  html += '<div class="kb-name">🌐 ' + (bookName || '公开知识库') + '</div>';
+  html += '<input type="checkbox" class="kb-cb" id="kb-cb-public" data-kbid="_public_" onclick="toggleKbSelectPublic(\'' + bookId + '\')" title="全选此知识库">';
+  html += '</div>';
+  html += '<div class="tree-container" id="kb-_public_">';
+  html += renderTree(tree, '_public_');
+  html += '</div>';
+  document.getElementById('treePanel').innerHTML = html;
+  document.getElementById('btnDownload').disabled = false;
+}
+
+function toggleKbSelectPublic(bookId) {
+  const checked = document.getElementById('kb-cb-public').checked;
+  document.getElementById('kb-_public_').querySelectorAll('.cb').forEach(c => { c.checked = checked; });
   updateCount();
 }
 
@@ -320,15 +375,18 @@ async function startDownload() {
 
   for (const kbEntry of selectedKbs) {
     const { bookId, ns, slug, allUuids } = kbEntry;
-    const kbUrl = 'https://www.yuque.com/' + ns + '/' + slug;
-    const kbName = kbs.find(k => String(k.id) === bookId);
-    log('  📚 ' + (kbName ? kbName.name : bookId) + ': ' + allUuids.length + ' 篇');
+    const isPublic = bookId === '_public_';
+    const kbUrl = isPublic ? publicKbUrl : ('https://www.yuque.com/' + ns + '/' + slug);
+    const kbName = isPublic ? (kbInfo?.bookName || '公开知识库') : kbs.find(k => String(k.id) === bookId);
+    log('  📚 ' + (kbName ? kbName.name || kbName : bookId) + ': ' + allUuids.length + ' 篇');
     try {
       const skipExisting = document.getElementById('chkSkipExisting').checked;
-      const body = selectedOutputDir
-        ? { token, kbUrl, uuids: allUuids, downloadResources, outputDir: selectedOutputDir, skipExisting }
-        : { token, kbUrl, uuids: allUuids, downloadResources, skipExisting };
-      const resp = await fetch('/api/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const endpoint = isPublic ? '/api/public-download' : '/api/download';
+      const body = { uuids: allUuids, downloadResources, skipExisting };
+      if (selectedOutputDir) body.outputDir = selectedOutputDir;
+      if (!isPublic) { body.token = token; body.kbUrl = kbUrl; }
+      else { body.url = publicKbUrl; }
+      const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await resp.json();
       if (!result.ok) throw new Error(result.error);
       currentTaskId = result.taskId;
