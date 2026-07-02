@@ -530,14 +530,11 @@ async function downloadDoc(docNode, bookId, host, token, outputDir, pathPrefix =
 
     // 特殊文档类型处理
     if (docType === 'Sheet' && body) {
-      const xlsxBuf = lakeSheetToXlsx(body);
-      if (xlsxBuf) {
-        const xlsxPath = filePath.replace(/\.md$/, '.xlsx');
-        ensureDir(dirPath);
-        fs.writeFileSync(xlsxPath, xlsxBuf);
-        log(`  ✓ 已保存 "${docName}" (表格→xlsx, ${xlsxBuf.length} 字节)`);
-        return { ok: true, path: xlsxPath, size: xlsxBuf.length };
-      }
+      const jsonPath = filePath.replace(/\.md$/, '.json');
+      ensureDir(dirPath);
+      fs.writeFileSync(jsonPath, body, 'utf-8');
+      log(`  ✓ 已保存 "${docName}" (表格→json)`);
+      return { ok: true, path: jsonPath, size: body.length };
     }
     if (docType === 'Table' && body) {
       const xlsxBuf = lakeTableToXlsx(body);
